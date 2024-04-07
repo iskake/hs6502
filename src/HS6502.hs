@@ -1,14 +1,24 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances #-}
+
 module HS6502 where
 import Data.Word
 import Control.Monad.State
 import Control.Monad.Except
 import Data.Vector hiding ((++),modify)
 
+import Memory
+
+-- import Data.Vector.Generic
+import qualified Data.ByteString as B
+
 
 -- CPU needs:
--- registers:
+-- registers
 -- - A, X, Y, P, SP :: Word8
 -- - PC  :: Word16
+-- memory - Word16 indexing, Word8 elements
+-- mmio?
 type Register8 = Word8
 type Register16 = Word16
 
@@ -18,14 +28,25 @@ data CPUState = CPUState { rA  :: Register8 -- Accumulator
                          , rP  :: Register8 -- Processor status
                          , rSP :: Register8 -- Stack pointer
                          , rPC :: Register16 -- Program counter
-                         , cMem :: Memory
+                         , cMem :: U8Memory -- ?'Replace' with `Memory a`? (I forgot how)
                          }
 
 type Opcode = Word8
 
-type Memory = Vector Word8
+-- TODO: Replace with Array or MVector?
+type U8Memory = Vector Word8 --MVector Word16 Word8
 
-type CPU' a = ExceptT (String) (StateT CPUState IO) a
+instance Memory U8Memory where
+ -- readAddr :: Memory -> Word16 -> Word8
+    readAddr mem addr = mem ! fromIntegral addr
+
+ -- writeAddr :: Memory -> Word16 -> Word8 -> Memory
+    writeAddr  mem addr val = mem // [(fromIntegral addr, val)]
+
+initMem :: U8Memory
+initMem = fromList [0xa9, 0x11, 0x00]
+
+type CPU' a = ExceptT (B.ByteString) (StateT CPUState IO) a
 type CPU = CPU' ()
 
 -- data CPUMem = CPUMem CPU Memory
@@ -86,15 +107,19 @@ setPC val c = CPUState (rA  c)
 
 -- ...
 
--- TODO: Replace with MVector??
-readMemAddr :: Word16 -> Memory -> Word8
-readMemAddr addr mem = mem ! fromIntegral addr
+
 
 pcRead :: CPUState -> Word8
-pcRead (CPUState _ _ _ _ _ pc mem) = readMemAddr pc mem
+pcRead (CPUState _ _ _ _ _ pc mem) = readAddr mem pc
 
 pcReadInc :: CPUState -> (Word8, CPUState)
-pcReadInc c@(CPUState _ _ _ _ _ pc mem) = (readMemAddr pc mem, setPC (pc+1) c)
+pcReadInc c@(CPUState _ _ _ _ _ pc mem) = (readAddr mem pc, setPC (pc+1) c)
+
+-- Temp.
+opcodeToInst :: Word8 -> (Opcode -> CPU' CPUState)
+opcodeToInst 0x00 = brk
+opcodeToInst 0xa9 = lda
+opcodeToInst _ = undefined
 
 
 -- CPU instructions:
@@ -142,6 +167,9 @@ bcs cpu _ = undefined
 
 beq :: CPU -> Opcode -> CPU
 beq cpu _ = undefined
+
+brk :: Opcode -> CPU' CPUState
+brk op = error $ "break called"
 
 lda :: Opcode -> CPU' CPUState
 lda op = do   -- immediate
