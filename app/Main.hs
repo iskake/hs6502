@@ -7,8 +7,9 @@ import qualified Data.ByteString as B
 
 main :: IO ()
 main = do
-  putStrLn "hs6502 debugger"
-  runDebugger undefined undefined
+  print $ map opToInst [0..255]
+  -- putStrLn "hs6502 debugger"
+  -- runDebugger undefined undefined
 
 runDebugger :: a -> b -> IO ()
 runDebugger cpu memory = do
