@@ -24,6 +24,20 @@ lsb = fromIntegral . (.&. 0xff)
 msb :: Word16 -> Word8
 msb = fromIntegral . (.>>. 8)
 
+bToW8 :: Num a => Bool -> a
+bToW8 False = 0
+bToW8 True  = 1
+
+w8ToB :: (Eq a, Num a) => a -> Bool
+w8ToB 0 = False
+w8ToB _ = True
+
+w8 :: Integral a => a -> Word8
+w8 = fromIntegral
+
+w16 :: Integral a => a -> Word16
+w16 = fromIntegral
+
 hex :: Integral a => a -> String
 hex = flip showHex ""
 

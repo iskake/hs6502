@@ -8,8 +8,11 @@ import qualified Data.ByteString as B
 main :: IO ()
 main = do
   print $ map opToInst [0..255]
-  -- putStrLn "hs6502 debugger"
+  putStrLn "hs6502 debugger"
   -- runDebugger undefined undefined
+
+  -- TEMP 'debugging':
+  -- print $ runInst LDA IndX emptyState {rX = 1, rPC = 0, cMem = U8Memory (fromList ([0x01,0x01,0x00,0x01,0x10,0x11] ++ (Prelude.take 512 (repeat 0))))}
 
 runDebugger :: a -> b -> IO ()
 runDebugger cpu memory = do

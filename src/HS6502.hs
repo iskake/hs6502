@@ -22,6 +22,7 @@ import Memory
 type Register8 = Word8
 type Register16 = Word16
 
+-- | The state of the CPU
 data (Memory a) => CPUState a = CPUState { rA  :: Register8  -- Accumulator
                                          , rX  :: Register8  -- X index register
                                          , rY  :: Register8  -- Y index register
@@ -33,6 +34,8 @@ data (Memory a) => CPUState a = CPUState { rA  :: Register8  -- Accumulator
                                          deriving (Show)
 
 -- | Processor status
+--
+-- Holds several flags 
 data ProcStatus = ProcStatus { fC :: Bool    -- carry flag
                              , fZ :: Bool    -- zero flag
                              , fI :: Bool    -- interrupt disable
@@ -46,28 +49,25 @@ data ProcStatus = ProcStatus { fC :: Bool    -- carry flag
 instance Show ProcStatus where
     show p = bin $ destructP p
 
-createP :: Word8 -> ProcStatus
-createP val = ProcStatus ((val .&. 0x01) == 1)           -- carry flag
-                         (((val .&. 0x02) .>>. 1) == 1)  -- zero flag
-                         (((val .&. 0x04) .>>. 2) == 1)  -- interrupt disable
-                         (((val .&. 0x08) .>>. 3) == 1)  -- decimal mode flag
-                         (((val .&. 0x10) .>>. 4) == 1)  -- break command
-                                                         -- nothing, always returns 1
-                         (((val .&. 0x40) .>>. 6) == 1)  -- overflow flag
-                         ((val .>>. 7) == 1)             -- negative flag
+constructP :: Word8 -> ProcStatus
+constructP val = ProcStatus (w8ToB (val .&. 0x01))
+                            (w8ToB ((val .&. 0x02) .>>. 1))
+                            (w8ToB ((val .&. 0x04) .>>. 2))
+                            (w8ToB ((val .&. 0x08) .>>. 3))
+                            (w8ToB ((val .&. 0x10) .>>. 4))
+                            -- ...
+                            (w8ToB ((val .&. 0x40) .>>. 6))
+                            (w8ToB (val .>>. 7))
 
 destructP :: ProcStatus -> Word8
-destructP (ProcStatus c z i d b v n) = bToW8 c .|.           -- carry flag
-                                       (bToW8 z .<<. 1) .|.  -- zero flag
-                                       (bToW8 i .<<. 2) .|.  -- interrupt disable
-                                       (bToW8 d .<<. 3) .|.  -- decimal mode flag
-                                       (bToW8 b .<<. 4) .|.  -- break command
-                                             (1 .<<. 5) .|.  -- nothing, always returns 1
-                                       (bToW8 v .<<. 6) .|.  -- overflow flag
-                                       (bToW8 n .<<. 7)             -- negative flag
-                                    where
-                                        bToW8 True  = 1
-                                        bToW8 False = 0
+destructP (ProcStatus c z i d b v n) = bToW8 c .|.
+                                       (bToW8 z .<<. 1) .|.
+                                       (bToW8 i .<<. 2) .|.
+                                       (bToW8 d .<<. 3) .|.
+                                       (bToW8 b .<<. 4) .|.
+                                             (1 .<<. 5) .|.
+                                       (bToW8 v .<<. 6) .|.
+                                       (bToW8 n .<<. 7)
 
 -- TODO: Replace with Array or MVector?
 newtype U8Memory = U8Memory (Vector Word8) --MVector Word16 Word8
@@ -87,8 +87,10 @@ initMem = U8Memory (fromList [0xa9, 0x77, 0x34])
 type CPU' a = ExceptT (B.ByteString) (StateT (CPUState U8Memory) IO) a
 type CPU = CPU' ()
 
-emptyState :: CPUState U8Memory
-emptyState = CPUState 0 0 0 (createP 0) 0 0 initMem
+type CPUState' = CPUState U8Memory
+
+emptyState :: CPUState'
+emptyState = CPUState 0 0 0 (constructP 0) 0 0 initMem
 
 -- stepCPU :: CPU -> Memory -> CPU
 stepCPU = runStateT . runExceptT
@@ -96,6 +98,8 @@ stepCPU = runStateT . runExceptT
 -- getCPUState :: CPU -> CPUState
 -- getCPUState cpu = do
 --     s' <- gets
+
+
 
 ---------------------------------------
 -- 
@@ -106,14 +110,13 @@ stepCPU = runStateT . runExceptT
 pcInc :: Memory a => (CPUState a -> b) -> Word16 -> CPUState a -> (b, CPUState a)
 pcInc f i c@(CPUState _ _ _ _ _ pc _) = (f c, c { rPC = pc+i })
 
-
+-- Reading from memory
+-- -------------------
 pcRead :: Memory a => CPUState a -> Word8
 pcRead (CPUState _ _ _ _ _ pc mem) = readAddr mem pc
 
 pcReadInc :: Memory a => CPUState a -> (Word8, CPUState a)
 pcReadInc = pcInc pcRead 1
--- TODO: Check if equivalent to:
--- pcReadInc c@(CPUState _ _ _ _ _ pc _) = (pcRead c, c { rPC = pc+1 })
 
 
 pcRead16 :: Memory a => CPUState a -> Word16
@@ -124,61 +127,86 @@ pcRead16Inc = pcInc pcRead16 2
 -- pcRead16Inc c@(CPUState _ _ _ _ _ pc _) = (pcRead16 c, c { rPC = pc+2 })
 
 
-absRead :: Memory a => CPUState a -> Word8
-absRead c@(CPUState _ _ _ _ _ _ mem) = readAddr mem (pcRead16 c)
+absRead :: Memory a => IndexRegister -> CPUState a -> Word8
+absRead ir c@(CPUState _ _ _ _ _ _ mem) = readAddr mem (pcRead16 c + w16 (idx ir c))
 
-absReadInc :: Memory a => CPUState a -> (Word8, CPUState a)
-absReadInc = pcInc absRead 2
-
-
-zeroPageRead :: Memory a => CPUState a -> Word8
-zeroPageRead c@(CPUState _ _ _ _ _ _ mem) = readAddr mem (asAddress (pcRead c) 0x00)
-
-zeroPageReadInc :: Memory a => CPUState a -> (Word8, CPUState a)
-zeroPageReadInc = pcInc zeroPageRead 1
-
--- TODO: rename/make a more generic function
-zeroPageReadIndexedWithSomeIndexRegisterEitherXOrY :: Memory a => IndexRegister -> CPUState a -> Word8
-zeroPageReadIndexedWithSomeIndexRegisterEitherXOrY ir c@(CPUState _ _ _ _ _ _ mem) = readAddr mem (asAddress (pcRead c + (if ir == X then rX c else rY c)) 0x00)
-
-zeroPageReadIndexedWithSomeIndexRegisterEitherXOrYInc :: Memory a => IndexRegister -> CPUState a -> (Word8, CPUState a)
-zeroPageReadIndexedWithSomeIndexRegisterEitherXOrYInc ir = pcInc (zeroPageReadIndexedWithSomeIndexRegisterEitherXOrY ir) 1
+absReadInc :: Memory a => IndexRegister -> CPUState a -> (Word8, CPUState a)
+absReadInc ir = pcInc (absRead ir) 2
 
 
--- Writing
+-- zeroPageRead :: Memory a => CPUState a -> Word8
+-- zeroPageRead c@(CPUState _ _ _ _ _ _ mem) = readAddr mem (asAddress (pcRead c) 0x00)
+
+-- zeroPageReadInc :: Memory a => CPUState a -> (Word8, CPUState a)
+-- zeroPageReadInc = pcInc zeroPageRead 1
+
+zeroPageRead :: Memory a => IndexRegister -> CPUState a -> Word8
+zeroPageRead ir c@(CPUState _ _ _ _ _ _ mem) = readAddr mem (asAddress (pcRead c + (if ir == X then rX c else rY c)) 0x00)
+
+zeroPageReadInc :: Memory a => IndexRegister -> CPUState a -> (Word8, CPUState a)
+zeroPageReadInc ir = pcInc (zeroPageRead ir) 1
+
+
+getIndirect :: Memory a => Word16 -> CPUState a -> Word16
+getIndirect addr c@(CPUState _ _ _ _ _ _ mem) = asAddress (readAddr mem addr) (readAddr mem (addr + 1))
+
+indRead :: Memory a => IndexRegister -> CPUState a -> Word8
+indRead None c@(CPUState _ _ _ _ _ _ mem) = undefined -- ?TODO? only used for JMP => no need for reading?
+indRead X    c@(CPUState _ _ _ _ _ _ mem) = readAddr mem (getIndirect ptr c)
+    where
+        ptr = asAddress (pcRead c + w8 (idx X c)) 0x00
+indRead Y    c@(CPUState _ _ _ _ _ pc mem) = readAddr mem (getIndirect ptr c + w16 (idx Y c))
+    where
+        ptr = asAddress (readAddr mem pc) 0x00
+
+indReadInc :: Memory a => IndexRegister -> CPUState a -> (Word8, CPUState a)
+indReadInc ir = pcInc (indRead ir) 1
+
+
+-- Writing to memory
+-- -----------------
 addrWrite :: Memory a => CPUState a -> Word16 -> Word8 -> CPUState a
 addrWrite c@(CPUState _ _ _ _ _ _ mem) addr val = c { cMem = writeAddr mem addr val}
 
+idx :: Memory a => IndexRegister -> CPUState a -> Word8
+idx None _ = 0
+idx X c = fromIntegral (rX c)
+idx Y c = fromIntegral (rY c)
 
-absWrite :: Memory a => CPUState a -> Word8 -> CPUState a
-absWrite c = addrWrite c (pcRead16 c)
+absWrite :: Memory a => IndexRegister -> CPUState a -> Word8 -> CPUState a
+absWrite ir c = addrWrite c (pcRead16 c + w16 (idx ir c))
 
-absWriteInc :: Memory a => CPUState a -> Word8 -> CPUState a
-absWriteInc c = addrWrite newc addr
+absWriteInc :: Memory a => IndexRegister -> CPUState a -> Word8 -> CPUState a
+absWriteInc ir c = addrWrite newc (addr + w16 (idx ir newc))
     where
         (addr, newc) = pcRead16Inc c
 
 
-absWriteIdx :: Memory a => IndexRegister -> CPUState a -> Word8 -> CPUState a
-absWriteIdx ir c = addrWrite c (pcRead16 c + ind)
-    where
-        ind = fromIntegral (if ir == X then rX c else rY c)
+zpWrite :: Memory a => IndexRegister -> CPUState a -> Word8 -> CPUState a
+zpWrite ir c = addrWrite c (asAddress (pcRead c + idx ir c) 0x00)
 
-absWriteIdxInc :: Memory a => IndexRegister -> CPUState a -> Word8 -> CPUState a
-absWriteIdxInc ir c = addrWrite newc (addr + ind)
+zpWriteInc :: Memory a => IndexRegister -> CPUState a -> Word8 -> CPUState a
+zpWriteInc ir c = addrWrite newc (asAddress (addr + idx ir c) 0x00)
     where
-        (addr, newc) = pcRead16Inc c
-        ind = fromIntegral (if ir == X then rX newc else rY newc)
+        (addr, newc) = pcReadInc c
 
+-- TODO
+-- indWrite :: Memory a => IndexRegister -> CPUState a -> Word8 -> CPUState a
+-- indWrite ir c = addrWrite c (asAddress (pcRead c + idx ir c) 0x00)
+
+-- indWriteInc :: Memory a => IndexRegister -> CPUState a -> Word8 -> CPUState a
+-- indWriteInc ir c = addrWrite newc (asAddress (addr + idx ir c) 0x00)
+--     where
+--         (addr, newc) = pcReadInc c
 
 -- Stack
 -- | Push one byte onto the stack, decrementing the stack pointer.
 pushByte :: Memory a => CPUState a -> Word8 -> CPUState a
-pushByte c@(CPUState _ _ _ _ sp pc mem) val = c {rSP = sp-1, cMem = writeAddr mem (asAddress sp 0x01) val }
+pushByte c@(CPUState _ _ _ _ sp _ mem) val = c {rSP = sp-1, cMem = writeAddr mem (asAddress sp 0x01) val }
 
 -- | Pull one byte from the stack, incrementing the stack pointer.
 pullByte :: Memory a => CPUState a -> (Word8, CPUState a)
-pullByte c@(CPUState _ _ _ _ sp pc mem) = (readAddr mem (asAddress sp 0x01), c {rSP = sp+1})
+pullByte c@(CPUState _ _ _ _ sp _ mem) = (readAddr mem (asAddress sp 0x01), c {rSP = sp+1})
 
 ---------------------------------------
 --
@@ -195,10 +223,12 @@ data Inst = ADC | AND | ASL | BCC | BCS | BEQ | BIT | BMI | BNE | BPL | BRK | BV
           | ILL
           deriving (Show)
 
-data AddrMode = Acc | Imm | ZP | ZPX | ZPY | Abs | AbsX | AbsY | Ind | IndX | IndY
+data AddrMode = Imp | Acc | Imm | ZP | ZPX | ZPY | Abs | AbsX | AbsY | Ind | IndX | IndY
               deriving (Show)
 
-data IndexRegister = X | Y
+data IndexRegister = None   -- No indexing
+                   | X      -- X register
+                   | Y      -- Y register
                     deriving Eq
 {- 
 Opcode matrix:
@@ -285,7 +315,7 @@ runInst BIT mode c = undefined
 runInst BMI mode c = undefined
 runInst BNE mode c = undefined
 runInst BPL mode c = undefined
-runInst BRK mode c = undefined
+runInst BRK _ c = undefined
 runInst BVC mode c = undefined
 runInst BVS mode c = undefined
 runInst CLC mode c = undefined
@@ -317,13 +347,13 @@ runInst JSR mode c = do
 runInst LDA mode c = do
     let (val,newc) = case mode of
                     Imm  -> pcReadInc c
-                    ZP   -> zeroPageReadInc c
-                    ZPX  -> zeroPageReadIndexedWithSomeIndexRegisterEitherXOrYInc X c
-                    Abs  -> absReadInc c
-                    AbsX -> undefined
-                    AbsY -> undefined
-                    IndX -> undefined
-                    IndY -> undefined
+                    ZP   -> zeroPageReadInc None c
+                    ZPX  -> zeroPageReadInc X c
+                    Abs  -> absReadInc None c
+                    AbsX -> absReadInc X c
+                    AbsY -> absReadInc Y c
+                    IndX -> indReadInc X c
+                    IndY -> indReadInc Y c
                     _    -> error "Unreachable"
     let z = val == 0
     let n = ((val .&. 0x80) .>>. 7) == 1
@@ -334,10 +364,10 @@ runInst LDA mode c = do
 runInst LDX mode c = do
     let (val,newc) = case mode of
                     Imm  -> pcReadInc c
-                    ZP   -> zeroPageReadInc c
-                    ZPY  -> zeroPageReadIndexedWithSomeIndexRegisterEitherXOrYInc Y c
-                    Abs  -> absReadInc c
-                    AbsY -> undefined
+                    ZP   -> zeroPageReadInc None c
+                    ZPY  -> zeroPageReadInc Y c
+                    Abs  -> absReadInc None c
+                    AbsY -> absReadInc Y c
                     _    -> error "Unreachable"
     let z = val == 0
     let n = ((val .&. 0x80) .>>. 7) == 1
@@ -346,17 +376,17 @@ runInst LDX mode c = do
 runInst LDY mode c = do
     let (val,newc) = case mode of
                     Imm  -> pcReadInc c
-                    ZP   -> zeroPageReadInc c
-                    ZPX  -> zeroPageReadIndexedWithSomeIndexRegisterEitherXOrYInc X c
-                    Abs  -> absReadInc c
-                    AbsX -> undefined
+                    ZP   -> zeroPageReadInc None c
+                    ZPX  -> zeroPageReadInc X c
+                    Abs  -> absReadInc None c
+                    AbsX -> absReadInc X c
                     _    -> error "Unreachable"
     let z = val == 0
     let n = ((val .&. 0x80) .>>. 7) == 1
     let newP = (rP newc) {fZ = z, fN = n}
     newc {rY = val, rP = newP}
 runInst LSR mode c = undefined
-runInst NOP mode c = c  -- TODO: newc because of cycles? already handled when decoding opcode?
+runInst NOP _ c = c  -- TODO: newc because of cycles? already handled when decoding opcode?
 runInst ORA mode c = undefined
 runInst PHA mode c = undefined
 runInst PHP mode c = undefined
@@ -370,17 +400,25 @@ runInst SBC mode c = undefined
 runInst SEC mode c = undefined
 runInst SED mode c = undefined
 runInst SEI mode c = undefined
-runInst STA mode c = case mode of
-                        ZP   -> undefined
-                        ZPX  -> undefined
-                        Abs  -> absWriteInc c (rA c)
-                        AbsX -> absWriteIdxInc X c (rA c)
-                        AbsY -> absWriteIdxInc Y c (rA c)
+runInst STA mode c = (case mode of
+                        ZP   -> zpWrite None
+                        ZPX  -> zpWrite X
+                        Abs  -> absWriteInc None
+                        AbsX -> absWriteInc X
+                        AbsY -> absWriteInc Y
                         IndX -> undefined
                         IndY -> undefined
-                        _    -> error "Unreachable"
-runInst STX mode c = undefined
-runInst STY mode c = undefined
+                        _    -> error "Unreachable") c (rA c)
+runInst STX mode c = (case mode of
+                        ZP   -> zpWrite None
+                        ZPY  -> zpWrite Y
+                        Abs  -> absWriteInc None
+                        _    -> error "Unreachable") c (rX c)
+runInst STY mode c = (case mode of
+                        ZP   -> zpWrite None
+                        ZPX  -> zpWrite X
+                        Abs  -> absWriteInc None
+                        _    -> error "Unreachable") c (rY c)
 runInst TAX mode c = undefined
 runInst TAY mode c = undefined
 runInst TSX mode c = undefined
