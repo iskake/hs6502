@@ -18,10 +18,10 @@ runDebugger cpu memory = do
   let p = words command
   case p of
     ["r"] -> do
-      let cpu = undefined
+      let cpu' = undefined
       let memory = [0,1,2,3] :: [Register8]
       -- cpu' <- stepCPU cpu
-      main --runDebugger cpu' memory
+      runDebugger cpu memory
     [x] | x `elem` ["q", "quit", "exit"] -> putStrLn "Bye!"
     _ -> do
       putStrLn "?"  -- just like ed intened
