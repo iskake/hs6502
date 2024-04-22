@@ -50,24 +50,24 @@ instance Show ProcStatus where
     show p = bin $ destructP p
 
 constructP :: Word8 -> ProcStatus
-constructP val = ProcStatus (w8ToB (val .&. 0x01))
-                            (w8ToB ((val .&. 0x02) .>>. 1))
-                            (w8ToB ((val .&. 0x04) .>>. 2))
-                            (w8ToB ((val .&. 0x08) .>>. 3))
-                            (w8ToB ((val .&. 0x10) .>>. 4))
+constructP val = ProcStatus (iToB (val .&. 0x01))
+                            (iToB ((val .&. 0x02) .>>. 1))
+                            (iToB ((val .&. 0x04) .>>. 2))
+                            (iToB ((val .&. 0x08) .>>. 3))
+                            (iToB ((val .&. 0x10) .>>. 4))
                             -- ...
-                            (w8ToB ((val .&. 0x40) .>>. 6))
-                            (w8ToB (val .>>. 7))
+                            (iToB ((val .&. 0x40) .>>. 6))
+                            (iToB (val .>>. 7))
 
 destructP :: ProcStatus -> Word8
-destructP (ProcStatus c z i d b v n) = bToW8 c .|.
-                                       (bToW8 z .<<. 1) .|.
-                                       (bToW8 i .<<. 2) .|.
-                                       (bToW8 d .<<. 3) .|.
-                                       (bToW8 b .<<. 4) .|.
+destructP (ProcStatus c z i d b v n) = bToI c .|.
+                                       (bToI z .<<. 1) .|.
+                                       (bToI i .<<. 2) .|.
+                                       (bToI d .<<. 3) .|.
+                                       (bToI b .<<. 4) .|.
                                              (1 .<<. 5) .|.
-                                       (bToW8 v .<<. 6) .|.
-                                       (bToW8 n .<<. 7)
+                                       (bToI v .<<. 6) .|.
+                                       (bToI n .<<. 7)
 
 -- TODO: Replace with Array or MVector?
 newtype U8Memory = U8Memory (Vector Word8) --MVector Word16 Word8

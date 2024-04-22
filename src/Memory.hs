@@ -10,7 +10,7 @@ class Memory a where
 
 -- Bit manipulation
 
--- | Represent two bytes (`Word8`) as a short 'memory address' (`Word16`)
+-- | Combines two `Word8`s into a `Word16`s (a short 'memory address')
 -- 
 -- The first argument being the least siginificant byte, and the second the most significant byte.
 asAddress :: Word8 -> Word8 -> Word16
@@ -24,22 +24,33 @@ lsb = fromIntegral . (.&. 0xff)
 msb :: Word16 -> Word8
 msb = fromIntegral . (.>>. 8)
 
-bToW8 :: Num a => Bool -> a
-bToW8 False = 0
-bToW8 True  = 1
+-- | Go from a boolean value to a number
+bToI :: Num a => Bool -> a
+bToI False = 0
+bToI True  = 1
 
-w8ToB :: (Eq a, Num a) => a -> Bool
-w8ToB 0 = False
-w8ToB _ = True
+-- | Go from a number to a boolean value
+iToB :: (Eq a, Num a) => a -> Bool
+iToB 0 = False
+iToB _ = True
 
+-- | Convert a number to a `Word8`
+--
+-- Same as `fromIntegral`
 w8 :: Integral a => a -> Word8
 w8 = fromIntegral
 
+-- | Convert a number to a `Word16`
+--
+-- Same as `fromIntegral`
 w16 :: Integral a => a -> Word16
 w16 = fromIntegral
 
+
+-- | Get the number as a hexidecimal string
 hex :: Integral a => a -> String
 hex = flip showHex ""
 
+-- | Get the number as a binary string
 bin :: Integral a => a -> String
 bin = flip showBin ""
