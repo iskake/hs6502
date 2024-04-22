@@ -112,6 +112,9 @@ pcInc f i c@(CPUState _ _ _ _ _ pc _) = (f c, c { rPC = pc+i })
 
 -- Reading from memory
 -- -------------------
+addrRead :: Memory a => CPUState a -> Word16 -> Word8
+addrRead (CPUState _ _ _ _ _ _ mem) = readAddr mem
+
 pcRead :: Memory a => CPUState a -> Word8
 pcRead (CPUState _ _ _ _ _ pc mem) = readAddr mem pc
 
@@ -128,50 +131,50 @@ pcRead16Inc = pcInc pcRead16 2
 
 
 absRead :: Memory a => IndexRegister -> CPUState a -> Word8
-absRead ir c@(CPUState _ _ _ _ _ _ mem) = readAddr mem (pcRead16 c + w16 (idx ir c))
+absRead ir c = addrRead c (pcRead16 c + w16 (idx ir c))
 
 absReadInc :: Memory a => IndexRegister -> CPUState a -> (Word8, CPUState a)
 absReadInc ir = pcInc (absRead ir) 2
 
-
--- zeroPageRead :: Memory a => CPUState a -> Word8
--- zeroPageRead c@(CPUState _ _ _ _ _ _ mem) = readAddr mem (asAddress (pcRead c) 0x00)
-
--- zeroPageReadInc :: Memory a => CPUState a -> (Word8, CPUState a)
--- zeroPageReadInc = pcInc zeroPageRead 1
-
 zeroPageRead :: Memory a => IndexRegister -> CPUState a -> Word8
-zeroPageRead ir c@(CPUState _ _ _ _ _ _ mem) = readAddr mem (asAddress (pcRead c + (if ir == X then rX c else rY c)) 0x00)
+zeroPageRead ir c = addrRead c (asAddress (pcRead c + idx ir c) 0x00)
 
 zeroPageReadInc :: Memory a => IndexRegister -> CPUState a -> (Word8, CPUState a)
 zeroPageReadInc ir = pcInc (zeroPageRead ir) 1
 
 
 getIndirect :: Memory a => Word16 -> CPUState a -> Word16
-getIndirect addr c@(CPUState _ _ _ _ _ _ mem) = asAddress (readAddr mem addr) (readAddr mem (addr + 1))
+getIndirect addr (CPUState _ _ _ _ _ _ mem) = asAddress (readAddr mem addr) (readAddr mem (addr + 1))
 
 indRead :: Memory a => IndexRegister -> CPUState a -> Word8
-indRead None c@(CPUState _ _ _ _ _ _ mem) = undefined -- ?TODO? only used for JMP => no need for reading?
 indRead X    c@(CPUState _ _ _ _ _ _ mem) = readAddr mem (getIndirect ptr c)
     where
         ptr = asAddress (pcRead c + w8 (idx X c)) 0x00
 indRead Y    c@(CPUState _ _ _ _ _ pc mem) = readAddr mem (getIndirect ptr c + w16 (idx Y c))
     where
         ptr = asAddress (readAddr mem pc) 0x00
+indRead _ _ = error $ "There is no other addressing mode for indirectly accessing 8 bit numbers"
 
 indReadInc :: Memory a => IndexRegister -> CPUState a -> (Word8, CPUState a)
+indReadInc None = error $ "There is no other addressing mode for indirectly accessing 8 bit numbers"
 indReadInc ir = pcInc (indRead ir) 1
+
+
+indRead16 :: Memory a => IndexRegister -> CPUState a -> Word16
+indRead16 None c@(CPUState _ _ _ _ _ _ mem) =  asAddress (readAddr mem ptr) (readAddr mem (ptr+1)) -- ?TODO? only used for JMP => no need for reading?
+    where
+        ptr = getIndirect (pcRead16 c) c
+indRead16 ir _ = error $ "There is no other addressing mode for indirectly accessing 16 bit numbers with index " ++ show ir
+
+indRead16Inc :: Memory a => IndexRegister -> CPUState a -> (Word16, CPUState a)
+indRead16Inc None = pcInc (indRead16 None) 2
+indRead16Inc ir = error $ "There is no other addressing mode for indirectly accessing 16 bit numbers with index " ++ show ir
 
 
 -- Writing to memory
 -- -----------------
 addrWrite :: Memory a => CPUState a -> Word16 -> Word8 -> CPUState a
 addrWrite c@(CPUState _ _ _ _ _ _ mem) addr val = c { cMem = writeAddr mem addr val}
-
-idx :: Memory a => IndexRegister -> CPUState a -> Word8
-idx None _ = 0
-idx X c = fromIntegral (rX c)
-idx Y c = fromIntegral (rY c)
 
 absWrite :: Memory a => IndexRegister -> CPUState a -> Word8 -> CPUState a
 absWrite ir c = addrWrite c (pcRead16 c + w16 (idx ir c))
@@ -190,14 +193,20 @@ zpWriteInc ir c = addrWrite newc (asAddress (addr + idx ir c) 0x00)
     where
         (addr, newc) = pcReadInc c
 
--- TODO
--- indWrite :: Memory a => IndexRegister -> CPUState a -> Word8 -> CPUState a
--- indWrite ir c = addrWrite c (asAddress (pcRead c + idx ir c) 0x00)
+indWrite :: Memory a => IndexRegister -> CPUState a -> Word8 -> CPUState a
+indWrite None c val = addrWrite c (getIndirect (pcRead16 c) c) val -- never actually used?
+indWrite X    c val = addrWrite c (getIndirect ptr newc) val
+    where
+        (addr, newc) = pcReadInc c
+        ptr = asAddress (addr + w8 (idx X newc)) 0x00
+indWrite Y    c@(CPUState _ _ _ _ _ pc mem) val = addrWrite c (getIndirect ptr c + w16 (idx Y c)) val
+    where
+        ptr = asAddress (readAddr mem pc) 0x00
 
--- indWriteInc :: Memory a => IndexRegister -> CPUState a -> Word8 -> CPUState a
--- indWriteInc ir c = addrWrite newc (asAddress (addr + idx ir c) 0x00)
---     where
---         (addr, newc) = pcReadInc c
+indWriteInc :: Memory a => IndexRegister -> CPUState a -> Word8 -> CPUState a
+indWriteInc ir c = addrWrite newc (asAddress (addr + idx ir c) 0x00)
+    where
+        (addr, newc) = pcReadInc c
 
 -- Stack
 -- | Push one byte onto the stack, decrementing the stack pointer.
@@ -229,7 +238,13 @@ data AddrMode = Imp | Acc | Imm | ZP | ZPX | ZPY | Abs | AbsX | AbsY | Ind | Ind
 data IndexRegister = None   -- No indexing
                    | X      -- X register
                    | Y      -- Y register
-                    deriving Eq
+                    deriving (Show, Eq)
+
+idx :: Memory a => IndexRegister -> CPUState a -> Word8
+idx None _ = 0
+idx X c = fromIntegral (rX c)
+idx Y c = fromIntegral (rY c)
+
 {- 
 Opcode matrix:
 [BRK,ORA,ILL,ILL,ILL,ORA,ASL,ILL,PHP,ORA,ASL,ILL,ILL,ORA,ASL,ILL,BPL,ORA,ILL,ILL,ILL,ORA,ASL,ILL,CLC,ORA,ILL,ILL,ILL,ORA,ASL,ILL
@@ -334,7 +349,7 @@ runInst INX mode c = undefined
 runInst INY mode c = undefined
 runInst JMP mode c = do
     let (val,newc) = case mode of
-                    Ind -> undefined    -- TODO
+                    Ind -> indRead16Inc None c
                     Abs -> pcRead16Inc c
                     _   -> error "Unreachable"
     newc {rPC = val}
@@ -406,8 +421,8 @@ runInst STA mode c = (case mode of
                         Abs  -> absWriteInc None
                         AbsX -> absWriteInc X
                         AbsY -> absWriteInc Y
-                        IndX -> undefined
-                        IndY -> undefined
+                        IndX -> indWriteInc X
+                        IndY -> indWriteInc Y
                         _    -> error "Unreachable") c (rA c)
 runInst STX mode c = (case mode of
                         ZP   -> zpWrite None
