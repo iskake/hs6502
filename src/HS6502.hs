@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE BinaryLiterals #-}
 
 module HS6502 where
 import Data.Word
@@ -225,37 +226,48 @@ pullByte c@(CPUState _ _ _ _ sp _ mem) = (readAddr mem (asAddress sp 0x01), c {r
 
 type Opcode = Word8
 
+-- | CPU instructions
+-- 
+-- See [the instruction reference](https://www.nesdev.org/obelisk-6502-guide/reference.html) for
+-- explanation of each individual instruction.
 data Inst = ADC | AND | ASL | BCC | BCS | BEQ | BIT | BMI | BNE | BPL | BRK | BVC | BVS | CLC
           | CLD | CLI | CLV | CMP | CPX | CPY | DEC | DEX | DEY | EOR | INC | INX | INY | JMP
           | JSR | LDA | LDX | LDY | LSR | NOP | ORA | PHA | PHP | PLA | PLP | ROL | ROR | RTI
           | RTS | SBC | SEC | SED | SEI | STA | STX | STY | TAX | TAY | TSX | TXA | TXS | TYA
-          | ILL
+          | ILL -- Illegal instruction, one of the undefined opcodes
           deriving (Show)
 
-data AddrMode = Imp | Acc | Imm | ZP | ZPX | ZPY | Abs | AbsX | AbsY | Ind | IndX | IndY
+-- | CPU Addressing Modes
+-- 
+-- Different ways for accessing memory.
+data AddrMode = Imp     -- Implicit
+              | Acc     -- Accumulator
+              | Imm     -- Immediate
+              | ZP      -- Zero Page ($0000-$00ff)
+              | ZPX     -- Zero Page,X
+              | ZPY     -- Zero Page,Y
+              | Rel     -- Relative
+              | Abs     -- Absolute
+              | AbsX    -- Absolute,X
+              | AbsY    -- Absolute,Y
+              | Ind     -- Indirect
+              | IndX    -- Indexed Indirect (X)
+              | IndY    -- Indexed Indirect (Y)
               deriving (Show)
 
+-- | Index registers
+-- 
+-- Used in specific memory addressing modes.
 data IndexRegister = None   -- No indexing
                    | X      -- X register
                    | Y      -- Y register
                     deriving (Show, Eq)
 
+-- | Get the value at the corresponding index regsiter, or 0.
 idx :: Memory a => IndexRegister -> CPUState a -> Word8
 idx None _ = 0
 idx X c = fromIntegral (rX c)
 idx Y c = fromIntegral (rY c)
-
-{- 
-Opcode matrix:
-[BRK,ORA,ILL,ILL,ILL,ORA,ASL,ILL,PHP,ORA,ASL,ILL,ILL,ORA,ASL,ILL,BPL,ORA,ILL,ILL,ILL,ORA,ASL,ILL,CLC,ORA,ILL,ILL,ILL,ORA,ASL,ILL
-,JSR,AND,ILL,ILL,BIT,AND,ROL,ILL,PLP,AND,ROL,ILL,BIT,AND,ROL,ILL,BMI,AND,ILL,ILL,ILL,AND,ROL,ILL,SEC,AND,ILL,ILL,ILL,AND,ROL,ILL
-,RTI,EOR,ILL,ILL,ILL,EOR,LSR,ILL,PHA,EOR,LSR,ILL,JMP,EOR,LSR,ILL,BVC,EOR,ILL,ILL,ILL,EOR,LSR,ILL,CLI,EOR,ILL,ILL,ILL,EOR,LSR,ILL
-,RTS,ADC,ILL,ILL,ILL,ADC,ROR,ILL,PLA,ADC,ROR,ILL,JMP,ADC,ROR,ILL,BVS,ADC,ILL,ILL,ILL,ADC,ROR,ILL,SEI,ADC,ILL,ILL,ILL,ADC,ROR,ILL
-,ILL,STA,ILL,ILL,STY,STA,STX,ILL,DEY,ILL,TXA,ILL,STY,STA,STX,ILL,BCC,STA,ILL,ILL,STY,STA,STX,ILL,TYA,STA,TXS,ILL,ILL,STA,ILL,ILL
-,LDX,LDA,LDX,ILL,LDX,LDA,LDX,ILL,TAY,LDA,TAX,ILL,LDX,LDA,LDX,ILL,BCS,LDA,ILL,ILL,LDX,LDA,LDX,ILL,CLV,LDA,TSX,ILL,LDX,LDA,LDX,ILL
-,CPY,CMP,ILL,ILL,CPY,CMP,DEC,ILL,INY,CMP,DEX,ILL,CPY,CMP,DEC,ILL,BNE,CMP,ILL,ILL,ILL,CMP,DEC,ILL,CLD,CMP,ILL,ILL,ILL,CMP,DEC,ILL
-,CPX,SBC,ILL,ILL,CPX,SBC,INC,ILL,INX,ILL,NOP,ILL,CPX,SBC,INC,ILL,BEQ,SBC,ILL,ILL,ILL,SBC,INC,ILL,SED,SBC,ILL,ILL,ILL,SBC,INC,ILL]
- -}
 
 -- | Get the instruction corresponding to the given opcode.
 opToInst :: Opcode -> Inst
@@ -293,7 +305,6 @@ opToInst 0xba = TSX
 opToInst 0x8a = TXA
 opToInst 0x9a = TXS
 opToInst 0x98 = TYA
--- TODO: use pattern matching instead only...?
 opToInst op | op `elem` [0x69, 0x65, 0x75, 0x6d, 0x7d, 0x79, 0x61, 0x71] = ADC
             | op `elem` [0x29, 0x25, 0x35, 0x2d, 0x3d, 0x39, 0x21, 0x31] = AND
             | op `elem` [0x0a, 0x06, 0x16, 0x0e, 0x1e]                   = ASL
@@ -307,7 +318,7 @@ opToInst op | op `elem` [0x69, 0x65, 0x75, 0x6d, 0x7d, 0x79, 0x61, 0x71] = ADC
             | op `elem` [0x4c, 0x6c]                                     = JMP
             | op `elem` [0xa9, 0xa5, 0xb5, 0xad, 0xbd, 0xb9, 0xa1, 0xb1] = LDA
             | op `elem` [0xa2, 0xa6, 0xb6, 0xae, 0xbe]                   = LDX
-            | op `elem` [0xa0, 0xa4, 0xb4, 0xac, 0xbc]                   = LDX
+            | op `elem` [0xa0, 0xa4, 0xb4, 0xac, 0xbc]                   = LDY
             | op `elem` [0x4a, 0x46, 0x56, 0x4e, 0x5e]                   = LSR
             | op `elem` [0x09, 0x05, 0x15, 0x0d, 0x1d, 0x19, 0x01, 0x11] = ORA
             | op `elem` [0x2a, 0x26, 0x36, 0x2e, 0x3e]                   = ROL
@@ -317,6 +328,53 @@ opToInst op | op `elem` [0x69, 0x65, 0x75, 0x6d, 0x7d, 0x79, 0x61, 0x71] = ADC
             | op `elem` [0x86, 0x96, 0x8e]                               = STX
             | op `elem` [0x84, 0x94, 0x8c]                               = STY
 opToInst _ = ILL
+
+-- | Get the addressing mode corresponding to the given opcode.
+opToAddrMode :: Opcode -> AddrMode
+opToAddrMode 0x00 = Imp
+opToAddrMode 0x10 = Rel
+opToAddrMode 0x20 = Abs
+opToAddrMode 0x30 = Rel
+opToAddrMode 0x40 = Imp
+opToAddrMode 0x50 = Rel
+opToAddrMode 0x60 = Imp
+opToAddrMode 0x70 = Rel
+opToAddrMode 0x90 = Rel
+opToAddrMode 0xb0 = Rel
+opToAddrMode 0xd0 = Rel
+opToAddrMode 0xf0 = Rel
+opToAddrMode 0x6c = Ind
+opToAddrMode 0x8a = Imp
+opToAddrMode 0x9a = Imp
+opToAddrMode 0xaa = Imp
+opToAddrMode 0xba = Imp
+opToAddrMode 0xca = Imp
+opToAddrMode 0xea = Imp
+opToAddrMode 0x96 = ZPY
+opToAddrMode 0xb6 = ZPY
+opToAddrMode 0xbE = AbsY
+opToAddrMode op | (op .&. 0b11111) == 0b00000 = Imm
+                | (op .&. 0b11111) == 0b00100 = ZP
+                | (op .&. 0b11111) == 0b01100 = Abs
+                | (op .&. 0b11111) == 0b10100 = ZPX
+                | (op .&. 0b11111) == 0b11100 = AbsX
+
+                | (op .&. 0b11111) == 0b00001 = ZPX
+                | (op .&. 0b11111) == 0b00101 = ZP
+                | (op .&. 0b11111) == 0b01001 = Imm
+                | (op .&. 0b11111) == 0b01101 = Abs
+                | (op .&. 0b11111) == 0b10001 = ZPY
+                | (op .&. 0b11111) == 0b10101 = ZPX
+                | (op .&. 0b11111) == 0b11001 = AbsY
+                | (op .&. 0b11111) == 0b11101 = AbsX
+
+                | (op .&. 0b11111) == 0b00010 = Imm
+                | (op .&. 0b11111) == 0b00110 = ZP
+                | (op .&. 0b11111) == 0b01010 = Acc
+                | (op .&. 0b11111) == 0b01110 = Abs
+                | (op .&. 0b11111) == 0b10110 = ZPX
+                | (op .&. 0b11111) == 0b11110 = AbsX
+opToAddrMode _ = Imp    -- TODO? have 'None' or 'Illegal' for the undefined opcodes?
 
 -- | Run a specific instruction on the cpu state
 runInst :: Memory a => Inst -> AddrMode -> CPUState a -> CPUState a
