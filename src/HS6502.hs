@@ -403,9 +403,9 @@ runInst SEC _ c = c {rP = (rP c) {fC = True}}
 runInst SED _ c = c {rP = (rP c) {fD = True}}
 runInst SEI _ c = c {rP = (rP c) {fI = True}}
 
-runInst CMP mode c = undefined
-runInst CPX mode c = undefined
-runInst CPY mode c = undefined
+runInst CMP mode c = cmpr (rA c) mode c
+runInst CPX mode c = cmpr (rX c) mode c
+runInst CPY mode c = cmpr (rY c) mode c
 
 runInst INC mode c = undefined
 runInst INX mode c = undefined
@@ -517,7 +517,7 @@ runInst ILL _ _ = error $ "Undefined instruction"
 
 -- Extracted instructions
 
--- | ADC/SBC instructions
+-- | Addition / subraction instructions (ADC, SBC)
 addsub :: Memory a => (Word16 -> Word16 -> Word16) -> (Word16 -> Word16) -> AddrMode -> CPUState a -> CPUState a
 addsub f g mode c = do
     let (val,newc) = (case mode of
@@ -544,7 +544,7 @@ addsub f g mode c = do
 
 -- | Bitwise logical instructions (AND, EOR, ORA)
 bitwise :: Memory a => (Word8 -> Register8 -> Register8) -> AddrMode -> CPUState a -> CPUState a
-bitwise f mode c =  do
+bitwise f mode c = do
     let (val,newc) = (case mode of
                     Imm  -> pcReadInc
                     ZP   -> zeroPageReadInc None
@@ -562,3 +562,24 @@ bitwise f mode c =  do
     let n = val' `testBit` 7
     let newP = (rP newc) {fZ = z, fN = n}
     newc {rA = val', rP = newP}
+
+-- | Comparison instructions (CMP, CPX, CPY)
+cmpr :: Memory a => Word8 -> AddrMode -> CPUState a -> CPUState a
+cmpr r mode c = do
+    let (val,newc) = (case mode of
+                    Imm  -> pcReadInc
+                    ZP   -> zeroPageReadInc None
+                    ZPX  -> zeroPageReadInc X       -- CMP only
+                    Abs  -> absReadInc None
+                    AbsX -> absReadInc X            -- CMP only
+                    AbsY -> absReadInc Y            -- CMP only
+                    IndX -> indReadInc X            -- CMP only
+                    IndY -> indReadInc Y            -- CMP only
+                    _    -> error "Unreachable" ) c
+    let val' = r - val
+
+    let cf = r >= val
+    let z = r == val
+    let n = val' `testBit` 7
+    let newP = (rP newc) {fC = cf, fZ = z, fN = n}
+    newc {rP = newP}
