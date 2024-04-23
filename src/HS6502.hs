@@ -417,11 +417,11 @@ runInst CPX mode c = cmpr (rX c) mode c
 runInst CPY mode c = cmpr (rY c) mode c
 
 runInst INC mode c = undefined
-runInst INX mode c = undefined
-runInst INY mode c = undefined
 runInst DEC mode c = undefined
-runInst DEX mode c = undefined
-runInst DEY mode c = undefined
+runInst INX mode c = let val = rX c + 1 in c {rX = val, rP = (rP c) {fZ = val == 0, fN = val `testBit` 7}}
+runInst DEX mode c = let val = rX c - 1 in c {rX = val, rP = (rP c) {fZ = val == 0, fN = val `testBit` 7}}
+runInst INY mode c = let val = rY c + 1 in c {rY = val, rP = (rP c) {fZ = val == 0, fN = val `testBit` 7}}
+runInst DEY mode c = let val = rY c - 1 in c {rY = val, rP = (rP c) {fZ = val == 0, fN = val `testBit` 7}}
 
 runInst BCC mode c = undefined
 runInst BCS mode c = undefined
