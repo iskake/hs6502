@@ -381,8 +381,8 @@ runInst NOP _ c = c
 
 runInst BRK _ c = undefined
 
-runInst ADC mode c = addsub (+) id mode c
-runInst SBC mode c = addsub (-) (1 -) mode c
+runInst ADC mode c = addsub id mode c
+runInst SBC mode c = addsub (.^. 0xff) mode c   -- bit trick: (a + carry + value xor 0xff) == (a - (1 - carry) - value)
 
 runInst AND mode c = bitwise (.&.) mode c
 runInst ORA mode c = bitwise (.|.) mode c
@@ -518,8 +518,8 @@ runInst ILL _ _ = error $ "Undefined instruction"
 -- Extracted instructions
 
 -- | Addition / subraction instructions (ADC, SBC)
-addsub :: Memory a => (Word16 -> Word16 -> Word16) -> (Word16 -> Word16) -> AddrMode -> CPUState a -> CPUState a
-addsub f g mode c = do
+addsub :: Memory a => (Word8 -> Word8) -> AddrMode -> CPUState a -> CPUState a
+addsub f mode c = do
     let (val,newc) = (case mode of
                     Imm  -> pcReadInc
                     ZP   -> zeroPageReadInc None
@@ -530,16 +530,17 @@ addsub f g mode c = do
                     IndX -> indReadInc X
                     IndY -> indReadInc Y
                     _    -> error "Unreachable") c
-    let a = w16 (rA newc)
+    let a = rA newc
     let ca = bToI $ fC $ rP newc :: Word16
 
-    let val16 = a `f` w16 val `f` g (w16 ca)
+    let val16 = w16 a + w16 (f val) + w16 ca
     let val' = w8 val16
 
-    let cf = w16 val' /= val16
+    let cf = val16 > 0xff
     let z = val' == 0
+    let v = (complement (a .^. val) .&. (a .^. val')) `testBit` 7
     let n = val' `testBit` 7
-    let newP = (rP newc) {fC = cf, fZ = z, fN = n}
+    let newP = (rP newc) {fC = cf, fZ = z, fV = v, fN = n}
     newc {rA = val', rP = newP}
 
 -- | Bitwise logical instructions (AND, EOR, ORA)
