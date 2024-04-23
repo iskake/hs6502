@@ -378,7 +378,13 @@ opToAddrMode _ = Imp    -- TODO? have 'None' or 'Illegal' for the undefined opco
 
 -- | Run a specific instruction on the cpu state
 runInst :: Memory a => Inst -> AddrMode -> CPUState a -> CPUState a
+runInst NOP _ c = c
+
+runInst BRK _ c = undefined
+
 runInst ADC mode c = undefined
+runInst SBC mode c = undefined
+
 runInst AND mode c = do
     let (val,newc) = case mode of
                     Imm  -> pcReadInc c
@@ -397,27 +403,24 @@ runInst AND mode c = do
     let n = ((val' .&. 0x80) .>>. 7) == 1
     let newP = (rP newc) {fZ = z, fN = n}
     newc {rA = val', rP = newP}
-runInst ASL mode c = undefined
-runInst BCC mode c = undefined
-runInst BCS mode c = undefined
-runInst BEQ mode c = undefined
-runInst BIT mode c = undefined
-runInst BMI mode c = undefined
-runInst BNE mode c = undefined
-runInst BPL mode c = undefined
-runInst BRK _ c = undefined
-runInst BVC mode c = undefined
-runInst BVS mode c = undefined
-runInst CLC mode c = undefined
-runInst CLD mode c = undefined
-runInst CLI mode c = undefined
-runInst CLV mode c = undefined
-runInst CMP mode c = undefined
-runInst CPX mode c = undefined
-runInst CPY mode c = undefined
-runInst DEC mode c = undefined
-runInst DEX mode c = undefined
-runInst DEY mode c = undefined
+runInst ORA mode c = do
+    let (val,newc) = case mode of
+                    Imm  -> pcReadInc c
+                    ZP   -> zeroPageReadInc None c
+                    ZPX  -> zeroPageReadInc X c
+                    Abs  -> absReadInc None c
+                    AbsX -> absReadInc X c
+                    AbsY -> absReadInc Y c
+                    IndX -> indReadInc X c
+                    IndY -> indReadInc Y c
+                    _    -> error "Unreachable"
+    let a = rA newc
+    let val' = val .|. a
+
+    let z = val' == 0
+    let n = ((val' .&. 0x80) .>>. 7) == 1
+    let newP = (rP newc) {fZ = z, fN = n}
+    newc {rA = val', rP = newP}
 runInst EOR mode c = do
     let (val,newc) = case mode of
                     Imm  -> pcReadInc c
@@ -436,9 +439,42 @@ runInst EOR mode c = do
     let n = ((val' .&. 0x80) .>>. 7) == 1
     let newP = (rP newc) {fZ = z, fN = n}
     newc {rA = val', rP = newP}
+
+runInst BIT mode c = undefined
+
+runInst ASL mode c = undefined
+runInst LSR mode c = undefined
+runInst ROL mode c = undefined
+runInst ROR mode c = undefined
+
+runInst CLC mode c = undefined
+runInst CLD mode c = undefined
+runInst CLI mode c = undefined
+runInst CLV mode c = undefined
+runInst SEC mode c = undefined
+runInst SED mode c = undefined
+runInst SEI mode c = undefined
+
+runInst CMP mode c = undefined
+runInst CPX mode c = undefined
+runInst CPY mode c = undefined
+
 runInst INC mode c = undefined
 runInst INX mode c = undefined
 runInst INY mode c = undefined
+runInst DEC mode c = undefined
+runInst DEX mode c = undefined
+runInst DEY mode c = undefined
+
+runInst BCC mode c = undefined
+runInst BCS mode c = undefined
+runInst BEQ mode c = undefined
+runInst BNE mode c = undefined
+runInst BMI mode c = undefined
+runInst BPL mode c = undefined
+runInst BVC mode c = undefined
+runInst BVS mode c = undefined
+
 runInst JMP mode c = do
     let (val,newc) = case mode of
                     Ind -> indRead16Inc None c
@@ -451,6 +487,7 @@ runInst JSR mode c = do
     let newc' = pushByte newc (lsb pc)
     let newc'' = pushByte newc' (msb pc)
     newc'' {rPC = addr}
+
 runInst LDA mode c = do
     let (val,newc) = case mode of
                     Imm  -> pcReadInc c
@@ -492,38 +529,6 @@ runInst LDY mode c = do
     let n = ((val .&. 0x80) .>>. 7) == 1
     let newP = (rP newc) {fZ = z, fN = n}
     newc {rY = val, rP = newP}
-runInst LSR mode c = undefined
-runInst NOP _ c = c  -- TODO: newc because of cycles? already handled when decoding opcode?
-runInst ORA mode c = do
-    let (val,newc) = case mode of
-                    Imm  -> pcReadInc c
-                    ZP   -> zeroPageReadInc None c
-                    ZPX  -> zeroPageReadInc X c
-                    Abs  -> absReadInc None c
-                    AbsX -> absReadInc X c
-                    AbsY -> absReadInc Y c
-                    IndX -> indReadInc X c
-                    IndY -> indReadInc Y c
-                    _    -> error "Unreachable"
-    let a = rA newc
-    let val' = val .|. a
-
-    let z = val' == 0
-    let n = ((val' .&. 0x80) .>>. 7) == 1
-    let newP = (rP newc) {fZ = z, fN = n}
-    newc {rA = val', rP = newP}
-runInst PHA mode c = undefined
-runInst PHP mode c = undefined
-runInst PLA mode c = undefined
-runInst PLP mode c = undefined
-runInst ROL mode c = undefined
-runInst ROR mode c = undefined
-runInst RTI mode c = undefined
-runInst RTS mode c = undefined
-runInst SBC mode c = undefined
-runInst SEC mode c = undefined
-runInst SED mode c = undefined
-runInst SEI mode c = undefined
 runInst STA mode c = (case mode of
                         ZP   -> zpWrite None
                         ZPX  -> zpWrite X
@@ -543,10 +548,20 @@ runInst STY mode c = (case mode of
                         ZPX  -> zpWrite X
                         Abs  -> absWriteInc None
                         _    -> error "Unreachable") c (rY c)
+
+runInst PHA mode c = undefined
+runInst PHP mode c = undefined
+runInst PLA mode c = undefined
+runInst PLP mode c = undefined
+
+runInst RTI mode c = undefined
+runInst RTS mode c = undefined
+
 runInst TAX mode c = undefined
 runInst TAY mode c = undefined
 runInst TSX mode c = undefined
 runInst TXA mode c = undefined
 runInst TXS mode c = undefined
 runInst TYA mode c = undefined
+
 runInst ILL mode c = error $ "Undefined instruction"
