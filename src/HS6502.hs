@@ -51,14 +51,13 @@ instance Show ProcStatus where
     show p = bin $ destructP p
 
 constructP :: Word8 -> ProcStatus
-constructP val = ProcStatus (iToB (val .&. 0x01))
-                            (iToB ((val .&. 0x02) .>>. 1))
-                            (iToB ((val .&. 0x04) .>>. 2))
-                            (iToB ((val .&. 0x08) .>>. 3))
-                            (iToB ((val .&. 0x10) .>>. 4))
-                            -- ...
-                            (iToB ((val .&. 0x40) .>>. 6))
-                            (iToB (val .>>. 7))
+constructP val = ProcStatus (val `testBit` 0)
+                            (val `testBit` 1)
+                            (val `testBit` 2)
+                            (val `testBit` 3)
+                            (val `testBit` 4)
+                            (val `testBit` 6)
+                            (val `testBit` 7)
 
 destructP :: ProcStatus -> Word8
 destructP (ProcStatus c z i d b v n) = bToI c .|.
@@ -449,7 +448,7 @@ runInst LDA mode c = do
                     IndY -> indReadInc Y c
                     _    -> error "Unreachable"
     let z = val == 0
-    let n = ((val .&. 0x80) .>>. 7) == 1
+    let n = val `testBit` 7
     let newP = (rP newc) {fZ = z, fN = n}
     newc {rA = val, rP = newP}
     -- (setP newP (setA val newc))
@@ -463,7 +462,7 @@ runInst LDX mode c = do
                     AbsY -> absReadInc Y c
                     _    -> error "Unreachable"
     let z = val == 0
-    let n = ((val .&. 0x80) .>>. 7) == 1
+    let n = val `testBit` 7
     let newP = (rP newc) {fZ = z, fN = n}
     newc {rX = val, rP = newP}
 runInst LDY mode c = do
@@ -475,7 +474,7 @@ runInst LDY mode c = do
                     AbsX -> absReadInc X c
                     _    -> error "Unreachable"
     let z = val == 0
-    let n = ((val .&. 0x80) .>>. 7) == 1
+    let n = val `testBit` 7
     let newP = (rP newc) {fZ = z, fN = n}
     newc {rY = val, rP = newP}
 runInst STA mode c = (case mode of
@@ -506,12 +505,12 @@ runInst PLP mode c = undefined
 runInst RTI mode c = undefined
 runInst RTS mode c = undefined
 
-runInst TAX mode c = let a = rA c  in c {rX  = a, rP = (rP c) {fZ = a == 0, fN = (a .&. 0b1000000 .>>. 7) == 1}}
-runInst TAY mode c = let a = rA c  in c {rY  = a, rP = (rP c) {fZ = a == 0, fN = (a .&. 0b1000000 .>>. 7) == 1}}
-runInst TSX mode c = let s = rSP c in c {rY  = s, rP = (rP c) {fZ = s == 0, fN = (s .&. 0b1000000 .>>. 7) == 1}}
-runInst TXA mode c = let x = rX c  in c {rA  = x, rP = (rP c) {fZ = x == 0, fN = (x .&. 0b1000000 .>>. 7) == 1}}
-runInst TXS mode c = let x = rX c  in c {rSP = x, rP = (rP c) {fZ = x == 0, fN = (x .&. 0b1000000 .>>. 7) == 1}}
-runInst TYA mode c = let y = rY c  in c {rA  = y, rP = (rP c) {fZ = y == 0, fN = (y .&. 0b1000000 .>>. 7) == 1}}
+runInst TAX mode c = let a = rA c  in c {rX  = a, rP = (rP c) {fZ = a == 0, fN = a `testBit` 7}}
+runInst TAY mode c = let a = rA c  in c {rY  = a, rP = (rP c) {fZ = a == 0, fN = a `testBit` 7}}
+runInst TSX mode c = let s = rSP c in c {rY  = s, rP = (rP c) {fZ = s == 0, fN = s `testBit` 7}}
+runInst TXA mode c = let x = rX c  in c {rA  = x, rP = (rP c) {fZ = x == 0, fN = x `testBit` 7}}
+runInst TXS mode c = let x = rX c  in c {rSP = x, rP = (rP c) {fZ = x == 0, fN = x `testBit` 7}}
+runInst TYA mode c = let y = rY c  in c {rA  = y, rP = (rP c) {fZ = y == 0, fN = y `testBit` 7}}
 
 runInst ILL _ _ = error $ "Undefined instruction"
 
@@ -539,7 +538,7 @@ addsub f g mode c = do
 
     let cf = w16 val' /= val16
     let z = val' == 0
-    let n = ((val' .&. 0x80) .>>. 7) == 1
+    let n = val' `testBit` 7
     let newP = (rP newc) {fC = cf, fZ = z, fN = n}
     newc {rA = val', rP = newP}
 
@@ -560,6 +559,6 @@ bitwise f mode c =  do
     let val' = a `f` val
 
     let z = val' == 0
-    let n = ((val' .&. 0x80) .>>. 7) == 1
+    let n = val' `testBit` 7
     let newP = (rP newc) {fZ = z, fN = n}
     newc {rA = val', rP = newP}
