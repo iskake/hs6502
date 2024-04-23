@@ -388,7 +388,16 @@ runInst AND mode c = bitwise (.&.) mode c
 runInst ORA mode c = bitwise (.|.) mode c
 runInst EOR mode c = bitwise (.^.) mode c
 
-runInst BIT mode c = undefined
+runInst BIT mode c = do
+    let (val,newc) = (case mode of
+                    ZP  -> zeroPageReadInc
+                    Abs -> absReadInc
+                    _   -> error "Unreachable") None c
+    let a = rA c
+    let val' = a .&. val
+
+    let newP = (rP c) {fZ = val' == 0, fV = val `testBit` 6, fN = val `testBit` 7}
+    newc {rP = newP}
 
 runInst ASL mode c = undefined
 runInst LSR mode c = undefined
@@ -396,11 +405,11 @@ runInst ROL mode c = undefined
 runInst ROR mode c = undefined
 
 runInst CLC _ c = c {rP = (rP c) {fC = False}}
-runInst CLD _ c = c {rP = (rP c) {fD = False}}
+runInst CLD _ c = c {rP = (rP c) {fD = False}}  -- TODO: Binary Coded Decimal is not implemented
 runInst CLI _ c = c {rP = (rP c) {fI = False}}
 runInst CLV _ c = c {rP = (rP c) {fV = False}}
 runInst SEC _ c = c {rP = (rP c) {fC = True}}
-runInst SED _ c = c {rP = (rP c) {fD = True}}
+runInst SED _ c = c {rP = (rP c) {fD = True}}   -- TODO: Binary Coded Decimal is not implemented
 runInst SEI _ c = c {rP = (rP c) {fI = True}}
 
 runInst CMP mode c = cmpr (rA c) mode c
