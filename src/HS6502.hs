@@ -399,9 +399,13 @@ runInst BIT mode c = do
     let newP = (rP c) {fZ = val' == 0, fV = val `testBit` 6, fN = val `testBit` 7}
     newc {rP = newP}
 
+runInst ASL Acc  c = let val = rA c .<<. 1 in c {rA = val,                               rP = (rP c) {fC = rA c `testBit` 7, fZ = val == 0, fN = val `testBit` 7}}
+runInst ROL Acc  c = let val = rA c .<<. 1 in c {rA = val .|. bToI (fC (rP c)),          rP = (rP c) {fC = rA c `testBit` 7, fZ = val == 0, fN = val `testBit` 7}}
+runInst LSR Acc  c = let val = rA c .>>. 1 in c {rA = val,                               rP = (rP c) {fC = rA c `testBit` 0, fZ = val == 0, fN = val `testBit` 7}}
+runInst ROR Acc  c = let val = rA c .>>. 1 in c {rA = val .|. (bToI (fC (rP c)) .<<. 7), rP = (rP c) {fC = rA c `testBit` 0, fZ = val == 0, fN = val `testBit` 7}}
 runInst ASL mode c = undefined
-runInst LSR mode c = undefined
 runInst ROL mode c = undefined
+runInst LSR mode c = undefined
 runInst ROR mode c = undefined
 
 runInst CLC _ c = c {rP = (rP c) {fC = False}}
