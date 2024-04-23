@@ -396,13 +396,13 @@ runInst LSR mode c = undefined
 runInst ROL mode c = undefined
 runInst ROR mode c = undefined
 
-runInst CLC mode c = c {rP = (rP c) {fC = False}}
-runInst CLD mode c = c {rP = (rP c) {fD = False}}
-runInst CLI mode c = c {rP = (rP c) {fI = False}}
-runInst CLV mode c = c {rP = (rP c) {fV = False}}
-runInst SEC mode c = c {rP = (rP c) {fC = True}}
-runInst SED mode c = c {rP = (rP c) {fD = True}}
-runInst SEI mode c = c {rP = (rP c) {fI = True}}
+runInst CLC _ c = c {rP = (rP c) {fC = False}}
+runInst CLD _ c = c {rP = (rP c) {fD = False}}
+runInst CLI _ c = c {rP = (rP c) {fI = False}}
+runInst CLV _ c = c {rP = (rP c) {fV = False}}
+runInst SEC _ c = c {rP = (rP c) {fC = True}}
+runInst SED _ c = c {rP = (rP c) {fD = True}}
+runInst SEI _ c = c {rP = (rP c) {fI = True}}
 
 runInst CMP mode c = undefined
 runInst CPX mode c = undefined
@@ -430,7 +430,7 @@ runInst JMP mode c = do
                     Abs -> pcRead16Inc c
                     _   -> error "Unreachable"
     newc {rPC = val}
-runInst JSR mode c = do
+runInst JSR _ c = do
     let pc = rPC c
     let (addr, newc) = pcRead16Inc c
     let newc' = pushByte newc (lsb pc)
@@ -506,14 +506,14 @@ runInst PLP mode c = undefined
 runInst RTI mode c = undefined
 runInst RTS mode c = undefined
 
-runInst TAX mode c = undefined
-runInst TAY mode c = undefined
-runInst TSX mode c = undefined
-runInst TXA mode c = undefined
-runInst TXS mode c = undefined
-runInst TYA mode c = undefined
+runInst TAX mode c = let a = rA c  in c {rX  = a, rP = (rP c) {fZ = a == 0, fN = (a .&. 0b1000000 .>>. 7) == 1}}
+runInst TAY mode c = let a = rA c  in c {rY  = a, rP = (rP c) {fZ = a == 0, fN = (a .&. 0b1000000 .>>. 7) == 1}}
+runInst TSX mode c = let s = rSP c in c {rY  = s, rP = (rP c) {fZ = s == 0, fN = (s .&. 0b1000000 .>>. 7) == 1}}
+runInst TXA mode c = let x = rX c  in c {rA  = x, rP = (rP c) {fZ = x == 0, fN = (x .&. 0b1000000 .>>. 7) == 1}}
+runInst TXS mode c = let x = rX c  in c {rSP = x, rP = (rP c) {fZ = x == 0, fN = (x .&. 0b1000000 .>>. 7) == 1}}
+runInst TYA mode c = let y = rY c  in c {rA  = y, rP = (rP c) {fZ = y == 0, fN = (y .&. 0b1000000 .>>. 7) == 1}}
 
-runInst ILL mode c = error $ "Undefined instruction"
+runInst ILL _ _ = error $ "Undefined instruction"
 
 
 -- Extracted instructions
