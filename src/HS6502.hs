@@ -382,63 +382,12 @@ runInst NOP _ c = c
 
 runInst BRK _ c = undefined
 
-runInst ADC mode c = undefined
-runInst SBC mode c = undefined
+runInst ADC mode c = addsub (+) id mode c
+runInst SBC mode c = addsub (-) (1 -) mode c
 
-runInst AND mode c = do
-    let (val,newc) = case mode of
-                    Imm  -> pcReadInc c
-                    ZP   -> zeroPageReadInc None c
-                    ZPX  -> zeroPageReadInc X c
-                    Abs  -> absReadInc None c
-                    AbsX -> absReadInc X c
-                    AbsY -> absReadInc Y c
-                    IndX -> indReadInc X c
-                    IndY -> indReadInc Y c
-                    _    -> error "Unreachable"
-    let a = rA newc
-    let val' = val .&. a
-
-    let z = val' == 0
-    let n = ((val' .&. 0x80) .>>. 7) == 1
-    let newP = (rP newc) {fZ = z, fN = n}
-    newc {rA = val', rP = newP}
-runInst ORA mode c = do
-    let (val,newc) = case mode of
-                    Imm  -> pcReadInc c
-                    ZP   -> zeroPageReadInc None c
-                    ZPX  -> zeroPageReadInc X c
-                    Abs  -> absReadInc None c
-                    AbsX -> absReadInc X c
-                    AbsY -> absReadInc Y c
-                    IndX -> indReadInc X c
-                    IndY -> indReadInc Y c
-                    _    -> error "Unreachable"
-    let a = rA newc
-    let val' = val .|. a
-
-    let z = val' == 0
-    let n = ((val' .&. 0x80) .>>. 7) == 1
-    let newP = (rP newc) {fZ = z, fN = n}
-    newc {rA = val', rP = newP}
-runInst EOR mode c = do
-    let (val,newc) = case mode of
-                    Imm  -> pcReadInc c
-                    ZP   -> zeroPageReadInc None c
-                    ZPX  -> zeroPageReadInc X c
-                    Abs  -> absReadInc None c
-                    AbsX -> absReadInc X c
-                    AbsY -> absReadInc Y c
-                    IndX -> indReadInc X c
-                    IndY -> indReadInc Y c
-                    _    -> error "Unreachable"
-    let a = rA newc
-    let val' = val .^. a
-
-    let z = val' == 0
-    let n = ((val' .&. 0x80) .>>. 7) == 1
-    let newP = (rP newc) {fZ = z, fN = n}
-    newc {rA = val', rP = newP}
+runInst AND mode c = bitwise (.&.) mode c
+runInst ORA mode c = bitwise (.|.) mode c
+runInst EOR mode c = bitwise (.^.) mode c
 
 runInst BIT mode c = undefined
 
@@ -447,13 +396,13 @@ runInst LSR mode c = undefined
 runInst ROL mode c = undefined
 runInst ROR mode c = undefined
 
-runInst CLC mode c = undefined
-runInst CLD mode c = undefined
-runInst CLI mode c = undefined
-runInst CLV mode c = undefined
-runInst SEC mode c = undefined
-runInst SED mode c = undefined
-runInst SEI mode c = undefined
+runInst CLC mode c = c {rP = (rP c) {fC = False}}
+runInst CLD mode c = c {rP = (rP c) {fD = False}}
+runInst CLI mode c = c {rP = (rP c) {fI = False}}
+runInst CLV mode c = c {rP = (rP c) {fV = False}}
+runInst SEC mode c = c {rP = (rP c) {fC = True}}
+runInst SED mode c = c {rP = (rP c) {fD = True}}
+runInst SEI mode c = c {rP = (rP c) {fI = True}}
 
 runInst CMP mode c = undefined
 runInst CPX mode c = undefined
@@ -565,3 +514,52 @@ runInst TXS mode c = undefined
 runInst TYA mode c = undefined
 
 runInst ILL mode c = error $ "Undefined instruction"
+
+
+-- Extracted instructions
+
+-- | ADC/SBC instructions
+addsub :: Memory a => (Word16 -> Word16 -> Word16) -> (Word16 -> Word16) -> AddrMode -> CPUState a -> CPUState a
+addsub f g mode c = do
+    let (val,newc) = (case mode of
+                    Imm  -> pcReadInc
+                    ZP   -> zeroPageReadInc None
+                    ZPX  -> zeroPageReadInc X
+                    Abs  -> absReadInc None
+                    AbsX -> absReadInc X
+                    AbsY -> absReadInc Y
+                    IndX -> indReadInc X
+                    IndY -> indReadInc Y
+                    _    -> error "Unreachable") c
+    let a = w16 (rA newc)
+    let ca = bToI $ fC $ rP newc :: Word16
+
+    let val16 = a `f` w16 val `f` g (w16 ca)
+    let val' = w8 val16
+
+    let cf = w16 val' /= val16
+    let z = val' == 0
+    let n = ((val' .&. 0x80) .>>. 7) == 1
+    let newP = (rP newc) {fC = cf, fZ = z, fN = n}
+    newc {rA = val', rP = newP}
+
+-- | Bitwise logical instructions (AND, EOR, ORA)
+bitwise :: Memory a => (Word8 -> Register8 -> Register8) -> AddrMode -> CPUState a -> CPUState a
+bitwise f mode c =  do
+    let (val,newc) = (case mode of
+                    Imm  -> pcReadInc
+                    ZP   -> zeroPageReadInc None
+                    ZPX  -> zeroPageReadInc X
+                    Abs  -> absReadInc None
+                    AbsX -> absReadInc X
+                    AbsY -> absReadInc Y
+                    IndX -> indReadInc X
+                    IndY -> indReadInc Y
+                    _    -> error "Unreachable" ) c
+    let a = rA newc
+    let val' = a `f` val
+
+    let z = val' == 0
+    let n = ((val' .&. 0x80) .>>. 7) == 1
+    let newP = (rP newc) {fZ = z, fN = n}
+    newc {rA = val', rP = newP}
