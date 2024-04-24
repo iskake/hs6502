@@ -420,8 +420,36 @@ runInst CMP mode c = cmpr (rA c) mode c
 runInst CPX mode c = cmpr (rX c) mode c
 runInst CPY mode c = cmpr (rY c) mode c
 
-runInst INC mode c = undefined
-runInst DEC mode c = undefined
+-- TODO: make it so you don't have to read and then write (pass func instead of val to xyzWrite functions?)
+runInst INC mode c = do
+    let val = (case mode of
+                    ZP   -> zeroPageRead None
+                    ZPX  -> zeroPageRead X
+                    Abs  -> absRead None
+                    AbsX -> absRead X
+                    _   -> error "Unreachable") c
+    let val' = val + 1
+    (case mode of
+                    ZP   -> zpWriteInc None c
+                    ZPX  -> zpWriteInc X c
+                    Abs  -> absWriteInc None c
+                    AbsX -> absWriteInc X c
+                    _   -> error "Unreachable") val'
+runInst DEC mode c = do
+    let val = (case mode of
+                    ZP   -> zeroPageRead None
+                    ZPX  -> zeroPageRead X
+                    Abs  -> absRead None
+                    AbsX -> absRead X
+                    _   -> error "Unreachable") c
+    let val' = val - 1
+    (case mode of
+                    ZP   -> zpWriteInc None c
+                    ZPX  -> zpWriteInc X c
+                    Abs  -> absWriteInc None c
+                    AbsX -> absWriteInc X c
+                    _   -> error "Unreachable") val'
+
 runInst INX mode c = let val = rX c + 1 in c {rX = val, rP = (rP c) {fZ = val == 0, fN = val `testBit` 7}}
 runInst DEX mode c = let val = rX c - 1 in c {rX = val, rP = (rP c) {fZ = val == 0, fN = val `testBit` 7}}
 runInst INY mode c = let val = rY c + 1 in c {rY = val, rP = (rP c) {fZ = val == 0, fN = val `testBit` 7}}
