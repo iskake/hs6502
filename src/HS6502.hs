@@ -464,8 +464,6 @@ runInst LDA mode c = do
     let n = val `testBit` 7
     let newP = (rP newc) {fZ = z, fN = n}
     newc {rA = val, rP = newP}
-    -- (setP newP (setA val newc))
-    -- return (setP newP (setA val newc))
 runInst LDX mode c = do
     let (val,newc) = case mode of
                     Imm  -> pcReadInc c
@@ -510,10 +508,10 @@ runInst STY mode c = (case mode of
                         Abs  -> absWriteInc None
                         _    -> error "Unreachable") c (rY c)
 
-runInst PHA mode c = undefined
-runInst PHP mode c = undefined
-runInst PLA mode c = undefined
-runInst PLP mode c = undefined
+runInst PHA _ c = pushByte c (rA c)
+runInst PHP _ c = pushByte c (destructP $ rP c)
+runInst PLA _ c = let (val,newc) = pullByte c in newc {rA = val, rP = (rP c) {fZ = val == 0, fN = val `testBit` 7}}
+runInst PLP _ c = let (val,newc) = pullByte c in newc {rP = constructP val}
 
 runInst RTI mode c = undefined
 runInst RTS mode c = undefined
