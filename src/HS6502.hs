@@ -403,10 +403,69 @@ runInst ASL Acc  c = let val = rA c .<<. 1 in c {rA = val,                      
 runInst ROL Acc  c = let val = rA c .<<. 1 in c {rA = val .|. bToI (fC (rP c)),          rP = (rP c) {fC = rA c `testBit` 7, fZ = val == 0, fN = val `testBit` 7}}
 runInst LSR Acc  c = let val = rA c .>>. 1 in c {rA = val,                               rP = (rP c) {fC = rA c `testBit` 0, fZ = val == 0, fN = val `testBit` 7}}
 runInst ROR Acc  c = let val = rA c .>>. 1 in c {rA = val .|. (bToI (fC (rP c)) .<<. 7), rP = (rP c) {fC = rA c `testBit` 0, fZ = val == 0, fN = val `testBit` 7}}
-runInst ASL mode c = undefined
-runInst ROL mode c = undefined
-runInst LSR mode c = undefined
-runInst ROR mode c = undefined
+
+-- TODO: make it so you don't have to read and then write (pass func instead of val to xyzWrite functions?)
+runInst ASL mode c = do
+    let val = (case mode of
+                    ZP   -> zeroPageRead None
+                    ZPX  -> zeroPageRead X
+                    Abs  -> absRead None
+                    AbsX -> absRead X
+                    _   -> error "Unreachable") c
+    let val' = val .<<. 1
+    let newc = (case mode of
+                    ZP   -> zpWriteInc None c
+                    ZPX  -> zpWriteInc X c
+                    Abs  -> absWriteInc None c
+                    AbsX -> absWriteInc X c
+                    _   -> error "Unreachable") val'
+    newc {rP = (rP c) {fC = rA c `testBit` 7, fZ = val == 0, fN = val `testBit` 7}}
+runInst ROL mode c = do
+    let val = (case mode of
+                    ZP   -> zeroPageRead None
+                    ZPX  -> zeroPageRead X
+                    Abs  -> absRead None
+                    AbsX -> absRead X
+                    _   -> error "Unreachable") c
+    let val' = (val .<<. 1) .|. bToI (fC (rP c))
+    let newc = (case mode of
+                    ZP   -> zpWriteInc None c
+                    ZPX  -> zpWriteInc X c
+                    Abs  -> absWriteInc None c
+                    AbsX -> absWriteInc X c
+                    _   -> error "Unreachable") val'
+    newc {rP = (rP c) {fC = rA c `testBit` 7, fZ = val == 0, fN = val `testBit` 7}}
+
+runInst LSR mode c = do
+    let val = (case mode of
+                    ZP   -> zeroPageRead None
+                    ZPX  -> zeroPageRead X
+                    Abs  -> absRead None
+                    AbsX -> absRead X
+                    _   -> error "Unreachable") c
+    let val' = val .>>. 1
+    let newc = (case mode of
+                    ZP   -> zpWriteInc None c
+                    ZPX  -> zpWriteInc X c
+                    Abs  -> absWriteInc None c
+                    AbsX -> absWriteInc X c
+                    _   -> error "Unreachable") val'
+    newc {rP = (rP c) {fC = rA c `testBit` 0, fZ = val == 0, fN = val `testBit` 7}}
+runInst ROR mode c = do
+    let val = (case mode of
+                    ZP   -> zeroPageRead None
+                    ZPX  -> zeroPageRead X
+                    Abs  -> absRead None
+                    AbsX -> absRead X
+                    _   -> error "Unreachable") c
+    let val' = (val .>>. 1) .|. (bToI (fC (rP c)) .<<. 7)
+    let newc = (case mode of
+                    ZP   -> zpWriteInc None c
+                    ZPX  -> zpWriteInc X c
+                    Abs  -> absWriteInc None c
+                    AbsX -> absWriteInc X c
+                    _   -> error "Unreachable") val'
+    newc {rP = (rP c) {fC = rA c `testBit` 0, fZ = val == 0, fN = val `testBit` 7}}
 
 runInst CLC _ c = c {rP = (rP c) {fC = False}}
 runInst CLD _ c = c {rP = (rP c) {fD = False}}  -- TODO: Binary Coded Decimal is not implemented
