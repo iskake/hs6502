@@ -127,7 +127,6 @@ pcRead16 (CPUState _ _ _ _ _ pc mem) = asAddress (readAddr mem pc) (readAddr mem
 
 pcRead16Inc :: Memory a => CPUState a -> (Word16, CPUState a)
 pcRead16Inc = pcInc pcRead16 2
--- pcRead16Inc c@(CPUState _ _ _ _ _ pc _) = (pcRead16 c, c { rPC = pc+2 })
 
 
 absRead :: Memory a => IndexRegister -> CPUState a -> Word8
@@ -161,7 +160,7 @@ indReadInc ir = pcInc (indRead ir) 1
 
 
 indRead16 :: Memory a => IndexRegister -> CPUState a -> Word16
-indRead16 None c@(CPUState _ _ _ _ _ _ mem) =  asAddress (readAddr mem ptr) (readAddr mem (ptr+1))
+indRead16 None c@(CPUState _ _ _ _ _ _ mem) = asAddress (readAddr mem ptr) (readAddr mem (ptr+1))
     where
         ptr = getIndirect (pcRead16 c) c
 indRead16 ir _ = error $ "There is no other addressing mode for indirectly accessing 16 bit numbers with index " ++ show ir
@@ -272,10 +271,18 @@ idx Y c = fromIntegral (rY c)
 runInst :: Memory a => Inst -> AddrMode -> CPUState a -> CPUState a
 runInst NOP _ c = c
 
-runInst BRK _ _ = undefined -- TODO: interrupts (use BRK as syscall for print, read, etc.?)
+runInst BRK _ c = do
+    let p = rP c
+    let pc = rPC c
+    let c' = pushByte c (msb pc)
+    let c'' = pushByte c' (lsb pc)
+    let newc = pushByte c'' (destructP p)
+
+    let addr = getIndirect 0xfffe newc
+    newc {rPC = addr, rP = p {fB = True}}
 
 runInst ADC mode c = addsub id mode c
-runInst SBC mode c = addsub (.^. 0xff) mode c   -- bit trick: (a + carry + value xor 0xff) == (a - (1 - carry) - value)
+runInst SBC mode c = addsub (.^. 0xff) mode c
 
 runInst AND mode c = bitwise (.&.) mode c
 runInst ORA mode c = bitwise (.|.) mode c
@@ -303,11 +310,11 @@ runInst LSR mode c = let (val,newc) = memReadWrite (.>>. 1) mode c              
 runInst ROR mode c = let (val,newc) = memReadWrite (\x -> (x .>>. 1) .|. (bToI (fC (rP c)) .<<. 7)) mode c in newc {rP = (rP newc) {fC = val `testBit` 0}}
 
 runInst CLC _ c = c {rP = (rP c) {fC = False}}
-runInst CLD _ c = c {rP = (rP c) {fD = False}}  -- TODO: Binary Coded Decimal is not implemented
+runInst CLD _ c = c {rP = (rP c) {fD = False}}  -- Note: Binary Coded Decimal (BCD) is not implemented
 runInst CLI _ c = c {rP = (rP c) {fI = False}}
 runInst CLV _ c = c {rP = (rP c) {fV = False}}
 runInst SEC _ c = c {rP = (rP c) {fC = True}}
-runInst SED _ c = c {rP = (rP c) {fD = True}}   -- TODO: Binary Coded Decimal is not implemented
+runInst SED _ c = c {rP = (rP c) {fD = True}}   -- Note: Binary Coded Decimal (BCD) is not implemented
 runInst SEI _ c = c {rP = (rP c) {fI = True}}
 
 runInst CMP mode c = cmpr (rA c) mode c
