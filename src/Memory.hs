@@ -1,8 +1,9 @@
 module Memory where
 
 import Data.Word
+import Data.Int
 import Data.Bits
-import Numeric (showHex, showBin)
+import Text.Printf (printf)
 
 class Memory a where
     readAddr  :: a -> Word16 -> Word8
@@ -46,11 +47,20 @@ w8 = fromIntegral
 w16 :: Integral a => a -> Word16
 w16 = fromIntegral
 
+-- | Convert a number to a `Int8`
+--
+-- Same as `fromIntegral`
+s8 :: Integral a => a -> Int8
+s8 = fromIntegral
 
--- | Get the number as a hexidecimal string
-hex :: Integral a => a -> String
-hex = flip showHex ""
+-- | Get the number as a 8-bit hexadecimal string with leading zeroes
+hex8 :: Word8 -> String
+hex8 = printf "%02x"
 
--- | Get the number as a binary string
-bin :: Integral a => a -> String
-bin = flip showBin ""
+-- | Get the number as a 16-bit hexadecimal string with leading zeroes
+hex16 :: Word16 -> String
+hex16 = printf "%04x"
+
+-- | Get the number as a 8-bit binary string with leading zeroes
+bin8 :: Word8 -> String
+bin8 = printf "%08b"

@@ -3,13 +3,12 @@
 {-# LANGUAGE BinaryLiterals #-}
 
 module HS6502 where
+import Data.Bits
 import Data.Word
 import Control.Monad.State
 import Control.Monad.Except
-import Data.Vector hiding ((++),modify,elem)
-
+import qualified Data.Vector as V
 import qualified Data.ByteString as B
-import Data.Bits
 
 import Memory
 
@@ -34,6 +33,9 @@ data (Memory a) => CPUState a = CPUState { rA  :: Register8  -- Accumulator
                                          }
                                          deriving (Show)
 
+emptyState :: Memory a => a -> CPUState a
+emptyState = CPUState 0 0 0 (constructP 0b100) 0xff 0x8000
+
 -- | Processor status
 --
 -- Holds several flags 
@@ -48,7 +50,7 @@ data ProcStatus = ProcStatus { fC :: Bool    -- carry flag
                              }
 
 instance Show ProcStatus where
-    show p = bin $ destructP p
+    show p = bin8 $ destructP p
 
 constructP :: Word8 -> ProcStatus
 constructP val = ProcStatus (val `testBit` 0)
@@ -65,40 +67,38 @@ destructP (ProcStatus c z i d b v n) = bToI c .|.
                                        (bToI i .<<. 2) .|.
                                        (bToI d .<<. 3) .|.
                                        (bToI b .<<. 4) .|.
-                                             (1 .<<. 5) .|.
+                                            (1 .<<. 5) .|.
                                        (bToI v .<<. 6) .|.
                                        (bToI n .<<. 7)
 
+
+
 -- TODO: Replace with Array or MVector?
-newtype U8Memory = U8Memory (Vector Word8) --MVector Word16 Word8
-    deriving (Show)
+newtype U8Memory = U8Memory (V.Vector Word8) --MVector Word16 Word8
+
+instance Show U8Memory where
+    show (U8Memory v) = "Memory of length " ++ show (V.length v)
 
 instance Memory U8Memory where
     readAddr :: U8Memory -> Word16 -> Word8
-    readAddr (U8Memory mem) addr = mem ! fromIntegral addr
+    readAddr (U8Memory mem) addr = mem V.! fromIntegral addr
     writeAddr :: U8Memory -> Word16 -> Word8 -> U8Memory -- TODO?
-    writeAddr (U8Memory mem) addr val = U8Memory (mem // [(fromIntegral addr, val)])
+    writeAddr (U8Memory mem) addr val = U8Memory (mem V.// [(fromIntegral addr, val)])
 
 -- TODO: replace temporary intial memory with real implementation
 initMem :: U8Memory
-initMem = U8Memory (fromList [0xa9, 0x77, 0x34])
+initMem = U8Memory (V.replicate 0x10000 0x00)
 
--- TODO: make this actually work
-type CPU' a = ExceptT (B.ByteString) (StateT (CPUState U8Memory) IO) a
-type CPU = CPU' ()
 
-type CPUState' = CPUState U8Memory
+-- TODO:
+memCreate :: [Word8] -> Int -> U8Memory
+memCreate x len = U8Memory (V.fromList (Prelude.replicate 0x8000 0 ++ x ++ Prelude.replicate (0x8000 - len) 0) )
 
-emptyState :: CPUState'
-emptyState = CPUState 0 0 0 (constructP 0) 0 0 initMem
 
--- stepCPU :: CPU -> Memory -> CPU
-stepCPU = runStateT . runExceptT
+type CPU a b = (ExceptT B.ByteString (StateT (CPUState b) IO) a)
+type CPU' a = CPU a U8Memory
 
--- getCPUState :: CPU -> CPUState
--- getCPUState cpu = do
---     s' <- gets
-
+runCPU = runStateT . runExceptT
 
 
 ---------------------------------------
@@ -433,6 +433,8 @@ runInst TYA _ c = let y = rY c  in c {rA  = y, rP = (rP c) {fZ = y == 0, fN = y 
 
 runInst ILL _ _ = error $ "Undefined instruction"
 
+runOP :: Memory a => Opcode -> CPU () a
+runOP op = modify (runInst (opToInst op) (opToAddrMode op))
 
 -- Extracted instructions
 
