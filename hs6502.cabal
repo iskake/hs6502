@@ -16,6 +16,7 @@ library
     import:           warnings
     -- Modules exported by the library.
     exposed-modules:  HS6502
+                      HS6502.Debug
                       Memory
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -45,7 +46,8 @@ executable hs6502
     build-depends:
         base <5,
         hs6502,
-        bytestring
+        bytestring,
+        mtl
     -- Directories containing source files.
     hs-source-dirs:   app
     -- Base language which the package is written in.
