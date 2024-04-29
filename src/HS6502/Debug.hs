@@ -4,10 +4,13 @@ import Data.Word
 import Memory
 import HS6502
 
-newtype Instruction = Instruction (Inst, AddrMode, Maybe (Either Word8 Word16))
+data Instruction = Instruction 
+    { instName :: Inst
+    , addrMode :: AddrMode
+    , instArg :: Maybe (Either Word8 Word16)}
 
 instance Show Instruction where
-    show (Instruction (inst, addrMode, value)) = show inst ++ " " ++ show addrMode ++ " " ++ show (hex8Or16 <$> value)
+    show (Instruction inst aMode value) = show inst ++ " " ++ show aMode ++ " " ++ show (hex8Or16 <$> value)
 
 hex8Or16 :: Either Word8 Word16 -> String
 hex8Or16 (Left  a) = hex8 a
@@ -30,7 +33,7 @@ disasOp op = (opToInst op, aMode, val)
 
 disasSect :: Memory a => Word16 -> Word16 -> a -> [Instruction]
 disasSect from to mem | from == to = []
-                      | otherwise = Instruction (i, a, f next) : disasSect (from + (1 + addrModeArgCount a)) to mem
+                      | otherwise = (Instruction i a (f next)) : disasSect (from + (1 + addrModeArgCount a)) to mem
                       where
                         op = readAddr mem from
                         next = asAddress (readAddr mem (from+1)) (readAddr mem (from+2))

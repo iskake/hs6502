@@ -17,6 +17,9 @@ class Memory a where
 asAddress :: Word8 -> Word8 -> Word16
 asAddress least most = fromIntegral least .|. (fromIntegral most .<<. 8)
 
+fromAddress :: Word16 -> [Word8]
+fromAddress x = [w8 (x .&. 0xff), w8 $ (x .&. 0xff00) .>>. 8]
+
 -- | Get the Least Significant Byte of a `Word16`
 lsb :: Word16 -> Word8
 lsb = fromIntegral . (.&. 0xff)
