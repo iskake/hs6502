@@ -10,12 +10,17 @@ import qualified Data.ByteString as B
 import Memory
 import Data.Bits ((.&.))
 
+import System.Environment
+import System.Exit (exitFailure)
+
 main :: IO ()
 main = do
   putStrLn "hs6502 debugger"
-  B.putStr "Filename: "
-  fileName <- getLine
-  putStrLn $ "Filename: " ++ fileName
+  args <- getArgs
+  fileName <- case args of
+      [] -> B.putStr "Filename: " >> getLine
+      a:_ -> return a
+  putStrLn $ "Running file: " <> fileName
   file <- B.readFile fileName
   print $ file
   let x = B.unpack file
