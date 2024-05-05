@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
 
 module Main where
 
@@ -10,10 +9,11 @@ import Data.Void
 import Data.Word
 import Data.Map (Map)
 import qualified Data.Map as Map
+import qualified Data.Text as T
+import Data.Functor
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
-import qualified Data.Text as T
 import System.Environment
 import System.FilePath
 
@@ -23,57 +23,36 @@ import Memory
 import qualified Data.Text.IO as T
 import qualified Data.ByteString as B
 import System.Exit (exitFailure)
-import Data.Either (isLeft)
 
 main :: IO ()
 main = do
     args <- getArgs
     case args of
         [] -> putStrLn "usage: assembler filename" >> exitFailure
-        a:_ -> putStrLn $ "Assembling file " ++ a
+        a:_ -> putStrLn $ "Assembling file " <> a
     let filename = head args
     file <- T.readFile (filename)
-    let ls = ((removeIf (\x -> (T.head x) == ';'))
-            . (map T.strip)
-            . (removeIf (== ""))
+    let ls = (filter (\x -> (T.head x) /= ';') -- TODO: replace with (many . pLegal) so we don't lose line numbers in error messages?
+            . map T.strip
+            . filter (/= "")
             . T.lines)
             file
     -- print ls
-    let x = map (runParser pLegal "") ls
-    -- print x
-    if any (isLeft) x
-        then (mapM_ (printFailures errorBundlePretty) [x]) >> exitFailure
-        else do
+    case mapM (runParser pLegal "") ls of
+        Left failures -> mapM_ (putStrLn . errorBundlePretty) [failures] >> exitFailure
+        Right l -> do
             -- let regions = getRegions x -- TODO
             let labels = Map.empty -- getLabels regions x -- TODO
-            -- let thing = head x
-            let asm = map (unEither . fmap (tryAssemble labels)) x
-            if any (isLeft) asm
-                then (mapM_ (printFailures (\s -> "Assembly error: " <> (T.unpack s))) [asm]) >> exitFailure
-                else do
-                    let val = map unEither asm
-                    B.writeFile ((takeBaseName filename) ++ ".bin") (B.pack (concat val))
-
-unEither :: Either a b -> b
-unEither (Right b) = b -- TODO: avoid ever using this
+            let asm = map (tryAssemble labels) l
+            case sequence asm of
+                Left errs -> mapM_ (putStrLn . (\s -> "Assembly error: " <> T.unpack s)) [errs] >> exitFailure
+                Right val -> B.writeFile (takeBaseName filename <> ".bin") (B.pack (concat val)) >> putStrLn ("Successfully assembled " <> ((takeBaseName filename) <> ".bin"))
 
 tryAssemble :: Map Label Word16 -> SourceLine -> Either Text [Word8]
 tryAssemble labels (Ins i) = assemble (labelReplace i labels)
 tryAssemble _ (Bytes bs)   = Right bs
-tryAssemble _ (Lab l)      = Right []
-tryAssemble _ (Region r)   = Right []
-
-printFailures :: (a -> String) -> [Either a b] -> IO ()
-printFailures _ [] = return ()
-printFailures f ((Left a):xs) = do
-    putStrLn (f a)
-    printFailures f xs
-printFailures f ((Right _):xs) = printFailures f xs
-removeIf :: (Text -> Bool) -> [Text] -> [Text]
-removeIf _ [] = []
-removeIf f (x:xs) = if (f x)
-                        then removeIf f xs
-                        else x : removeIf f xs
+tryAssemble _ (Lab _)      = Right []
+tryAssemble _ (Region _)   = Right []
 
 
 data SourceLine = Ins SourceInstruction
@@ -83,10 +62,10 @@ data SourceLine = Ins SourceInstruction
                 deriving (Show)
 
 pLegal :: Parser SourceLine
-pLegal = try (pInstruction >>= return . Ins)
-    <|> try (pLabel >>= return . Lab)
-    <|> try (pByte >>= return . Bytes)
-    <|> (pRegion >>= return . Region)
+pLegal = try (pInstruction <&> Ins)
+     <|> try (pLabel <&> Lab)
+     <|> try (pByte <&> Bytes)
+     <|> (pRegion <&> Region)
 
 type Parser = Parsec Void Text
 
@@ -187,7 +166,7 @@ pAddrMode = try imm  <|>
             try imp  <|>
             acc
     where
-        imm  = void (char '#') >> (pWord8) >>= \x -> return (Imm, Just (Left x))
+        imm  = (void (char '#') *> (pWord8 <* notFollowedBy (char ','))) >>= \x -> return (Imm, Just (Left x))
         zpx  = (pWord8) >>= \x -> void (string' ",x") >> return (ZPX, Just (Left x))
         zpy  = (pWord8) >>= \x -> void (string' ",y") >> return (ZPY, Just (Left x))
         absx = (pWord16OrLabel) >>= \x -> void (string' ",x") >> return (AbsX, Just (Right x))
@@ -204,18 +183,21 @@ pAddrMode = try imm  <|>
 pWord8 :: Parser Word8
 pWord8 = do
     void (char '$')
-    x <- lexeme L.hexadecimal
-    return x
+    _ <- lookAhead ((hexDigitChar >> hexDigitChar) <* notFollowedBy hexDigitChar)
+    lexeme L.hexadecimal
 
 pWord16 :: Parser Word16
 pWord16 = do
     void (char '$')
-    x <- lexeme L.hexadecimal
-    return x
+    _ <- lookAhead ((hexDigitChar >> hexDigitChar >> hexDigitChar >> hexDigitChar) <* notFollowedBy hexDigitChar)
+    lexeme L.hexadecimal
 
 pWord16OrLabel :: Parser (Either Word16 Label)
-pWord16OrLabel = try ((T.pack <$> some letterChar) >>= return . Right)
-             <|> (pWord16 >>= return . Left)
+pWord16OrLabel = try ((T.pack <$> some letterChar) <&> Right)
+             <|> (pWord16 <&> Left)
+
+sc0 :: Parser ()
+sc0 = L.space space (L.skipLineComment ";") empty
 
 sc :: Parser ()
 sc = L.space space1 (L.skipLineComment ";") empty
@@ -231,8 +213,6 @@ pInstruction = do
     sc
     (amode, arg) <- pAddrMode
     sc
-    -- arg <- pArgument
-    -- return (Instruction inst amode arg)
     return (inst, amode, arg)
 
 labeler :: Argument -> Map Label Word16 -> Maybe (Either Word8 Word16)
@@ -242,7 +222,7 @@ labeler (Just (Left x))          _ = Just (Left x)
 labeler Nothing                  _ = Nothing
 
 labelReplace :: SourceInstruction -> Map Label Word16 -> Instruction
-labelReplace (i,am,a) m = (Instruction i am (labeler a m))
+labelReplace (i,am,a) m = Instruction i am (labeler a m)
 
 -- The quick and easy way to do it
 assemble :: Instruction -> Either Text [Word8]
