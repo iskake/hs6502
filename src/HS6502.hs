@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE BinaryLiterals #-}
+{-# LANGUAGE NumericUnderscores #-}
 
 module HS6502 where
 import Data.Bits
@@ -82,21 +83,21 @@ instance Show U8Memory where
 instance Memory U8Memory where
     readAddr :: U8Memory -> Word16 -> Word8
     readAddr (U8Memory mem) addr = mem V.! fromIntegral addr
-    writeAddr :: U8Memory -> Word16 -> Word8 -> U8Memory -- TODO?
-    writeAddr (U8Memory mem) addr val = U8Memory (mem V.// [(fromIntegral addr, val)])
+    writeAddr :: U8Memory -> Word16 -> Word8 -> U8Memory
+    writeAddr m@(U8Memory mem) addr val = if addr < 0x8000
+                                            then U8Memory (mem V.// [(fromIntegral addr, val)]) -- TODO?
+                                            else m  -- Don't allow writes in 'ROM' region
 
--- TODO: replace temporary intial memory with real implementation
-initMem :: U8Memory
-initMem = U8Memory (V.replicate 0x10000 0x00)
+emptyMem :: U8Memory
+emptyMem = U8Memory (V.replicate 0x10000 0x00)
 
 
--- TODO:
+-- TODO?
 memCreate :: [Word8] -> Int -> U8Memory
 memCreate x len = U8Memory (V.fromList (Prelude.replicate 0x8000 0 ++ x ++ Prelude.replicate (0x8000 - len) 0) )
 
 
 type CPU a b = (ExceptT B.ByteString (StateT (CPUState b) IO) a)
-type CPU' a = CPU a U8Memory
 
 runCPU = runStateT . runExceptT
 
