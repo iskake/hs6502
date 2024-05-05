@@ -610,18 +610,18 @@ opToAddrMode 0xca = Imp
 opToAddrMode 0xea = Imp
 opToAddrMode 0x96 = ZPY
 opToAddrMode 0xb6 = ZPY
-opToAddrMode 0xbE = AbsY
+opToAddrMode 0xbe = AbsY
 opToAddrMode op | (op .&. 0b11111) == 0b00000 = Imm
                 | (op .&. 0b11111) == 0b00100 = ZP
                 | (op .&. 0b11111) == 0b01100 = Abs
                 | (op .&. 0b11111) == 0b10100 = ZPX
                 | (op .&. 0b11111) == 0b11100 = AbsX
 
-                | (op .&. 0b11111) == 0b00001 = ZPX
+                | (op .&. 0b11111) == 0b00001 = IndX
                 | (op .&. 0b11111) == 0b00101 = ZP
                 | (op .&. 0b11111) == 0b01001 = Imm
                 | (op .&. 0b11111) == 0b01101 = Abs
-                | (op .&. 0b11111) == 0b10001 = ZPY
+                | (op .&. 0b11111) == 0b10001 = IndY
                 | (op .&. 0b11111) == 0b10101 = ZPX
                 | (op .&. 0b11111) == 0b11001 = AbsY
                 | (op .&. 0b11111) == 0b11101 = AbsX
@@ -632,4 +632,4 @@ opToAddrMode op | (op .&. 0b11111) == 0b00000 = Imm
                 | (op .&. 0b11111) == 0b01110 = Abs
                 | (op .&. 0b11111) == 0b10110 = ZPX
                 | (op .&. 0b11111) == 0b11110 = AbsX
-opToAddrMode _ = Imp    -- TODO? have 'None' or 'Illegal' for the undefined opcodes?
+opToAddrMode _ = Imp
