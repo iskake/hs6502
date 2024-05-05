@@ -38,14 +38,17 @@ main = do
             . T.lines)
             file
     -- print ls
-    case mapM (runParser pLegal "") ls of
+    case mapM (runParser (sc >> pLegal) "") ls of
         Left failures -> mapM_ (putStrLn . errorBundlePretty) [failures] >> exitFailure
         Right l -> do
             -- let regions = getRegions x -- TODO
-            let labels = Map.empty -- getLabels regions x -- TODO
+            let labels = getLabels l Map.empty 0x8000--regions x -- TODO
+            -- print labels
             let asm = map (tryAssemble labels) l
+            -- print asm
+            mapM_ (either (\a -> T.putStrLn $ "Assembly error: " <> a) (\_ -> return ())) asm
             case sequence asm of
-                Left errs -> mapM_ (putStrLn . (\s -> "Assembly error: " <> T.unpack s)) [errs] >> exitFailure
+                Left _ -> T.putStrLn "  Errors encountered while assembling!" >> exitFailure
                 Right val -> B.writeFile (takeBaseName filename <> ".bin") (B.pack (concat val)) >> putStrLn ("Successfully assembled " <> ((takeBaseName filename) <> ".bin"))
 
 tryAssemble :: Map Label Word16 -> SourceLine -> Either Text [Word8]
@@ -53,6 +56,20 @@ tryAssemble labels (Ins i) = assemble (labelReplace i labels)
 tryAssemble _ (Bytes bs)   = Right bs
 tryAssemble _ (Lab _)      = Right []
 tryAssemble _ (Region _)   = Right []
+
+-- getRegions :: [SourceLine] -> Word16 -> Word16 -> [Region]
+-- getRegions [] _ _ = []
+-- getRegions ((Ins (_, a, _)):xs) last len = (1 + addrModeArgCount a)
+
+getLabels :: [SourceLine] -> Map.Map Label Word16 -> Word16 -> Map.Map Label Word16
+getLabels [] m _ = m
+getLabels ((Ins (_, a, _)):xs)  m i = getLabels xs m (i + 1 + (addrModeArgCount a))
+getLabels ((Bytes bs):xs) m i = getLabels xs m (i + w16 (length bs))
+getLabels ((Lab l):xs)    m i = getLabels xs (Map.insert l i m) i
+getLabels ((Region _):xs) m i = getLabels xs m i
+
+
+data Region = Regi Word16 Int
 
 
 data SourceLine = Ins SourceInstruction
@@ -62,10 +79,10 @@ data SourceLine = Ins SourceInstruction
                 deriving (Show)
 
 pLegal :: Parser SourceLine
-pLegal = try (pInstruction <&> Ins)
-     <|> try (pLabel <&> Lab)
+pLegal = try (pLabel <&> Lab)
      <|> try (pByte <&> Bytes)
-     <|> (pRegion <&> Region)
+     <|> try (pRegion <&> Region)
+     <|> (pInstruction <&> Ins)
 
 type Parser = Parsec Void Text
 
@@ -135,18 +152,21 @@ pInst = choice
 pLabel :: Parser Label
 pLabel = do
     -- void (char '.')
+    sc
     s <- T.pack <$> some letterChar
     void (char ':')
     return s
 
 pByte :: Parser [Word8]
 pByte = do
+    sc
     void (string' ".db")
     sc
     many pWord8
 
 pRegion :: Parser Word16
 pRegion = do
+    sc
     void (string' ".region")
     sc
     pWord16
@@ -161,8 +181,8 @@ pAddrMode = try imm  <|>
             try indx <|>
             try indy <|>
             try absn <|>
-            try rel  <|>
             try zp   <|>
+            try rel  <|>
             try imp  <|>
             acc
     where
@@ -193,7 +213,9 @@ pWord16 = do
     lexeme L.hexadecimal
 
 pWord16OrLabel :: Parser (Either Word16 Label)
-pWord16OrLabel = try ((T.pack <$> some letterChar) <&> Right)
+pWord16OrLabel = do
+    sc
+    try ((T.pack <$> some letterChar) <&> Right)
              <|> (pWord16 <&> Left)
 
 sc0 :: Parser ()
@@ -209,6 +231,7 @@ type SourceInstruction = (Inst, AddrMode, Argument)
 
 pInstruction :: Parser SourceInstruction
 pInstruction = do
+    sc
     inst <- pInst <?> "valid instruction"
     sc
     (amode, arg) <- pAddrMode
@@ -235,7 +258,7 @@ assemble (Instruction ORA Imm  (Just (Left val)))   = Right $ [0x09, val]
 assemble (Instruction ASL Acc  Nothing)             = Right $ [0x0a]
 assemble (Instruction ORA Abs  (Just (Right val)))  = Right $ [0x0d] <> (fromAddress val)
 assemble (Instruction ASL Abs  (Just (Right val)))  = Right $ [0x0e] <> (fromAddress val)
-assemble (Instruction BPL Rel  (Just (Left val)))   = Right $ [0x10, val] -- TODO: adjust?
+assemble (Instruction BPL _    (Just (Left val)))   = Right $ [0x10, val] -- TODO: adjust? (+ handle Rel vs. ZP?)
 assemble (Instruction ORA IndY (Just (Right val)))  = Right $ [0x11] <> (fromAddress val)
 assemble (Instruction ORA ZPX  (Just (Left val)))   = Right $ [0x15, val]
 assemble (Instruction ASL ZPX  (Just (Left val)))   = Right $ [0x16, val]
@@ -254,7 +277,7 @@ assemble (Instruction ROL Acc  Nothing)             = Right $ [0x2a]
 assemble (Instruction BIT Abs  (Just (Right val)))  = Right $ [0x2c] <> (fromAddress val)
 assemble (Instruction AND Abs  (Just (Right val)))  = Right $ [0x2d] <> (fromAddress val)
 assemble (Instruction ROL Abs  (Just (Right val)))  = Right $ [0x2e] <> (fromAddress val)
-assemble (Instruction BMI Rel  (Just (Left val)))   = Right $ [0x30, val] -- TODO: adjust?
+assemble (Instruction BMI _    (Just (Left val)))   = Right $ [0x30, val] -- TODO: adjust? (+ handle Rel vs. ZP?)
 assemble (Instruction AND IndY (Just (Right val)))  = Right $ [0x31] <> (fromAddress val)
 assemble (Instruction AND ZPX  (Just (Left val)))   = Right $ [0x35, val]
 assemble (Instruction ROL ZPX  (Just (Left val)))   = Right $ [0x36, val]
@@ -272,7 +295,7 @@ assemble (Instruction LSR Acc  Nothing)             = Right $ [0x4a]
 assemble (Instruction JMP Abs  (Just (Right val)))  = Right $ [0x4c] <> (fromAddress val)
 assemble (Instruction EOR Abs  (Just (Right val)))  = Right $ [0x4d] <> (fromAddress val)
 assemble (Instruction LSR Abs  (Just (Right val)))  = Right $ [0x4e] <> (fromAddress val)
-assemble (Instruction BVC Rel  (Just (Left val)))   = Right $ [0x50, val] -- TODO: adjust?
+assemble (Instruction BVC _    (Just (Left val)))   = Right $ [0x50, val] -- TODO: adjust? (+ handle Rel vs. ZP?)
 assemble (Instruction EOR IndY (Just (Right val)))  = Right $ [0x51] <> (fromAddress val)
 assemble (Instruction EOR ZPX  (Just (Left val)))   = Right $ [0x55, val]
 assemble (Instruction LSR ZPX  (Just (Left val)))   = Right $ [0x56, val]
@@ -290,7 +313,7 @@ assemble (Instruction ROR Acc  Nothing)             = Right $ [0x6a]
 assemble (Instruction JMP Ind  (Just (Right val)))  = Right $ [0x6c] <> (fromAddress val)
 assemble (Instruction ADC Abs  (Just (Right val)))  = Right $ [0x6d] <> (fromAddress val)
 assemble (Instruction ROR Abs  (Just (Right val)))  = Right $ [0x6e] <> (fromAddress val)
-assemble (Instruction BVS Rel  (Just (Left val)))   = Right $ [0x70, val] -- TODO: adjust?
+assemble (Instruction BVS _    (Just (Left val)))   = Right $ [0x70, val] -- TODO: adjust? (+ handle Rel vs. ZP?)
 assemble (Instruction ADC IndY (Just (Right val)))  = Right $ [0x71] <> (fromAddress val)
 assemble (Instruction ADC ZPX  (Just (Left val)))   = Right $ [0x75, val]
 assemble (Instruction ROR ZPX  (Just (Left val)))   = Right $ [0x76, val]
@@ -307,7 +330,7 @@ assemble (Instruction TXA Imp  Nothing)             = Right $ [0x8a]
 assemble (Instruction STY Abs  (Just (Right val)))  = Right $ [0x8c] <> (fromAddress val)
 assemble (Instruction STA Abs  (Just (Right val)))  = Right $ [0x8d] <> (fromAddress val)
 assemble (Instruction STX Abs  (Just (Right val)))  = Right $ [0x8e] <> (fromAddress val)
-assemble (Instruction BCC Rel  (Just (Left val)))   = Right $ [0x90, val] -- TODO: adjust?
+assemble (Instruction BCC _    (Just (Left val)))   = Right $ [0x90, val] -- TODO: adjust? (+ handle Rel vs. ZP?)
 assemble (Instruction STA IndY (Just (Right val)))  = Right $ [0x91] <> (fromAddress val)
 assemble (Instruction STY ZPX  (Just (Left val)))   = Right $ [0x94, val]
 assemble (Instruction STA ZPX  (Just (Left val)))   = Right $ [0x95, val]
@@ -328,7 +351,7 @@ assemble (Instruction TAX Imp  Nothing)             = Right $ [0xaa]
 assemble (Instruction LDY Abs  (Just (Right val)))  = Right $ [0xac] <> (fromAddress val)
 assemble (Instruction LDA Abs  (Just (Right val)))  = Right $ [0xad] <> (fromAddress val)
 assemble (Instruction LDX Abs  (Just (Right val)))  = Right $ [0xae] <> (fromAddress val)
-assemble (Instruction BCS Rel  (Just (Left val)))   = Right $ [0xb0, val] -- TODO: adjust?
+assemble (Instruction BCS _    (Just (Left val)))   = Right $ [0xb0, val] -- TODO: adjust? (+ handle Rel vs. ZP?)
 assemble (Instruction LDA IndY (Just (Right val)))  = Right $ [0xb1] <> (fromAddress val)
 assemble (Instruction LDY ZPX  (Just (Left val)))   = Right $ [0xb4, val]
 assemble (Instruction LDA ZPX  (Just (Left val)))   = Right $ [0xb5, val]
@@ -350,7 +373,7 @@ assemble (Instruction DEX Imp  Nothing)             = Right $ [0xca]
 assemble (Instruction CPY Abs  (Just (Right val)))  = Right $ [0xcc] <> (fromAddress val)
 assemble (Instruction CMP Abs  (Just (Right val)))  = Right $ [0xcd] <> (fromAddress val)
 assemble (Instruction DEC Abs  (Just (Right val)))  = Right $ [0xce] <> (fromAddress val)
-assemble (Instruction BNE Rel  (Just (Left val)))   = Right $ [0xd0, val] -- TODO: adjust?
+assemble (Instruction BNE _    (Just (Left val)))   = Right $ [0xd0, val] -- TODO: adjust? (+ handle Rel vs. ZP?)
 assemble (Instruction CMP IndY (Just (Right val)))  = Right $ [0xd1] <> (fromAddress val)
 assemble (Instruction CMP ZPX  (Just (Left val)))   = Right $ [0xd5, val]
 assemble (Instruction DEC ZPX  (Just (Left val)))   = Right $ [0xd6, val]
@@ -369,7 +392,7 @@ assemble (Instruction NOP Imp  Nothing)             = Right $ [0xea]
 assemble (Instruction CPX Abs  (Just (Right val)))  = Right $ [0xec] <> (fromAddress val)
 assemble (Instruction SBC Abs  (Just (Right val)))  = Right $ [0xed] <> (fromAddress val)
 assemble (Instruction INC Abs  (Just (Right val)))  = Right $ [0xee] <> (fromAddress val)
-assemble (Instruction BEQ Rel  (Just (Left val)))   = Right $ [0xf0, val] -- TODO: adjust?
+assemble (Instruction BEQ _    (Just (Left val)))   = Right $ [0xf0, val] -- TODO: adjust? (+ handle Rel vs. ZP?)
 assemble (Instruction SBC IndY (Just (Right val)))  = Right $ [0xf1] <> (fromAddress val)
 assemble (Instruction SBC ZPX  (Just (Left val)))   = Right $ [0xf5, val]
 assemble (Instruction INC ZPX  (Just (Left val)))   = Right $ [0xf6, val]
