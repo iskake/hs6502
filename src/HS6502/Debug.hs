@@ -45,6 +45,12 @@ disasOp op = (opToInst op, aMode, val)
                 2 -> Just . Right
                 _ -> const Nothing
 
+disasOpToInst :: Word8 -> Word16 -> Instruction
+disasOpToInst op addr = Instruction i a v
+    where
+        (i,a,f) = disasOp op
+        v = f addr
+
 disasSect :: Memory a => Word16 -> Word16 -> a -> [Instruction]
 disasSect from to mem | from >= to = []
                       | otherwise = (Instruction i a (f next)) : disasSect (from + (1 + addrModeArgCount a)) to mem

@@ -5,8 +5,7 @@ module Main where
 
 import HS6502
 import HS6502.Debug
-import Data.Word
-import qualified Data.ByteString as B
+import qualified Data.ByteString as B -- TODO? replace with Data.Text
 import Memory
 import Data.Bits ((.&.))
 
@@ -38,33 +37,46 @@ runDebugger cpu = do
     ["s"] -> do
       (_,cpustate) <- cpu
       (op, cpustate') <- (return . pcReadInc) cpustate
-      (_,cpustate'') <- runCPU (runOP op) cpustate'
+      (result,cpustate'') <- runCPU (runOP op) cpustate'
 
-      let p = rP cpustate''
-      let b = fB p
-      if b
-        then do
-          let cpustate''' =  cpustate'' {rP = (rP cpustate'') {fB = False}}
-          putStrLn "BRK called!!! (currently does nothing...)"
-          putStrLn (printCPUState cpustate''')
-          putStrLn (printNextInstr cpustate''')
-          runDebugger (return (Right (), cpustate'''))
-        else do
-          putStrLn (printCPUState cpustate'')
-          putStrLn (printNextInstr cpustate'')
-          runDebugger (return (Right (), cpustate''))
+      case result of
+          Left a -> do
+            B.putStr ("A FATAL ERROR OCCURRED:\n  " <> a <> "\n")
+            putStrLn "\nDEBUG: continuing execution at last valid CPU state..."
+            putStrLn (printCPUState cpustate)
+            putStrLn (printNextInstr cpustate)
+            runDebugger cpu
+          Right () -> do
+            let p = rP cpustate''
+            let b = fB p
+            if b
+              then do
+                let cpustate''' =  cpustate'' {rP = (rP cpustate'') {fB = False}}
+                putStrLn "BRK called!!! (currently does nothing...)"
+                putStrLn (printCPUState cpustate''')
+                putStrLn (printNextInstr cpustate''')
+                runDebugger (return (Right (), cpustate'''))
+              else do
+                putStrLn (printCPUState cpustate'')
+                putStrLn (printNextInstr cpustate'')
+                runDebugger (return (Right (), cpustate''))
     ["c"] -> do
       -- c <- cpu
-      !cpu' <- keepRunningCPUState cpu  -- runs forever
-      runDebugger cpu'
+      keepRunningCPUState cpu  -- runs forever
     ["p"] -> do
       (_,cpustate) <- cpu
       putStrLn (printCPUState cpustate)
       putStrLn (printNextInstr cpustate)
       runDebugger cpu
-    -- ["pi"] -> do
-    --   mapM_ 
-    --   runDebugger cpu
+    ["pi"] -> do
+      putStrLn "List of instructions:"
+      mapM_ (\x -> putStrLn (hex8 x <> ": " <> show (disasOpToInst x 0xffff))) [0..255]
+      putStrLn "Note: `$ff` is used here to represent any 8-bit hexadecimal number, and can be  "
+      putStrLn "     written in assembly as any value from $00-$ff (0-255).                     "
+      putStrLn "      `$ffff` is any 16-bit hex number, and can be written in assembly as either"
+      putStrLn "     any value from $0000-ffff (0-65535) or as any known label                  "
+      putStrLn "     (labels do not show up in this debugger, instead their memory address is.) "
+      runDebugger cpu
     ["x"] -> do
       (_,cpustate) <- cpu
       let pc = rPC cpustate
@@ -114,7 +126,16 @@ runDebugger cpu = do
 keepRunningCPUState cpu = do
   (_,cpustate) <- cpu
   let (op, cpustate') = pcReadInc cpustate
-  keepRunningCPUState (runCPU (runOP op) cpustate')
+  let r = (runCPU (runOP op) cpustate')
+  (result,b) <- r
+  case result of
+      Left a -> do
+        B.putStr ("A FATAL ERROR OCCURRED:\n  " <> a <> "\n")
+        putStrLn "\nDEBUG: continuing execution at last valid CPU state..."
+        putStrLn (printCPUState cpustate)
+        putStrLn (printNextInstr cpustate)
+        runDebugger cpu
+      Right () -> keepRunningCPUState r
 
 printHelp :: IO ()
 printHelp = do
@@ -126,5 +147,5 @@ printHelp = do
   putStrLn "  d  - Disassemble the memory at the specified memory address, or (if given no argument,) at the program counter."
   putStrLn "  w  - Write the specified byte to the specified memory address."
   putStrLn "  p  - Print the current CPU state, including register values and the next instruction to be run."
-  -- putStrLn "  pi - Show a list of all instructions and their coressponding opcode."
+  putStrLn "  pi - Show a list of all instructions and their coressponding opcode."
   putStrLn "  h  - show this help text."
