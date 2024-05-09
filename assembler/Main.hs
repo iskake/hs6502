@@ -29,8 +29,10 @@ main = do
     args <- getArgs
     case args of
         [] -> putStrLn "usage: assembler filename" >> exitFailure
-        a:_ -> putStrLn $ "Assembling file " <> a
-    let filename = head args
+        _ -> mapM_ (\x -> putStrLn ("Assembling file" <> x) >> assembleFile x) args
+
+assembleFile :: FilePath -> IO ()
+assembleFile filename = do
     file <- T.readFile (filename)
     let ls = (filter (\x -> (T.head x) /= ';') -- TODO: replace with (many . pLegal) so we don't lose line numbers in error messages?
             . map T.strip
@@ -49,7 +51,7 @@ main = do
             mapM_ (either (\a -> T.putStrLn $ "Assembly error: " <> a) (\_ -> return ())) asm
             case sequence asm of
                 Left _ -> T.putStrLn "  Errors encountered while assembling!" >> exitFailure
-                Right val -> B.writeFile (takeBaseName filename <> ".bin") (B.pack (concat val)) >> putStrLn ("Successfully assembled " <> ((takeBaseName filename) <> ".bin"))
+                Right val -> B.writeFile (replaceExtension filename "bin") (B.pack (concat val)) >> putStrLn ("Successfully assembled " <> (replaceExtension filename "bin"))
 
 tryAssemble :: Map Label Word16 -> SourceLine -> Either Text [Word8]
 tryAssemble labels (Ins i) = assemble (labelReplace i labels)
@@ -407,4 +409,4 @@ assemble (Instruction i m a) = do
             (Just b) -> case b of
                 (Left  w) -> "$" <> (T.pack (hex8 w)) <> " as"
                 (Right w) -> "$" <> (T.pack (hex16 w)) <> " as"
-    Left ("instruction " <> T.pack (show i) <> " with addressing mode " <> T.pack (show m) <> " and " <> ar <> " argument")
+    Left ("instruction " <> T.pack (show i) <> " with " <> T.pack (show m) <> " addressing mode and " <> ar <> " argument")
