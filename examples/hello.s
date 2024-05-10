@@ -1,6 +1,19 @@
+; A simple program that prints "Hello, World!" and exits.
+; 
+; This is done by copying the hello world string to the RAM, and running the
+; 'BRK' instruction, here implemented as a 'system call' (where value $01
+; corresponds to printing text).
+
 start:
-    lda retptr
-    sta $0000
+    lda retptr  ; BRK will jump to the address stored at the bytes $fffe-$ffff,
+                ; which is usually (if the program size is less than 32KiB,)
+                ; nothing, meaning the address $0000 (a part of RAM)
+                ; (note that this is just how the 6502 CPU works.)
+
+    sta $0000   ; To stop the program from going into an infinite loop of
+                ; BRK calls (opcode $00 is BRK), we write the opcode of
+                ; the instruction 'RTI' (Return From Interrupt) is written
+                ; to $0000 and will be executed after the CPU calls 'BRK'
     ldx #$00
 copy:   ; Copy Hello World text to memory
     lda texthello,x
@@ -13,14 +26,9 @@ print:
     pha
     lda #$00    ; Low byte of where we stored the text
     pha
-    lda #$01    ; 01 is 'print'
+    lda #$01    ; $01 is 'print'
     brk         ; break, can be thought of as 'syscall' in this specific implementation
     stp
-
-strcpy:
-    ; copy until a == 0
-
-    bne $12
 
 retptr:
     rti
