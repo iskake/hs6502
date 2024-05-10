@@ -67,3 +67,11 @@ hex16 = printf "%04x"
 -- | Get the number as a 8-bit binary string with leading zeroes
 bin8 :: Word8 -> String
 bin8 = printf "%08b"
+
+-- | Convert a Char to a Word8
+cToW8 :: Char -> Word8
+cToW8 = fromIntegral . fromEnum
+
+-- | Convert a Word8 to a Char
+w8ToC :: Word8 -> Char
+w8ToC = toEnum . fromIntegral
