@@ -12,7 +12,7 @@ start:
 
     sta $0000   ; To stop the program from going into an infinite loop of
                 ; BRK calls (opcode $00 is BRK), we write the opcode of
-                ; the instruction 'RTI' (Return From Interrupt) is written
+                ; the instruction 'RTI' (ReTurn from Interrupt) is written
                 ; to $0000 and will be executed after the CPU calls 'BRK'
     ldx #$00
 copy:   ; Copy Hello World text to memory
@@ -28,10 +28,12 @@ print:
     pha
     lda #$01    ; $01 is 'print'
     brk         ; break, can be thought of as 'syscall' in this specific implementation
-    stp
+done:
+    stp         ; stop execution of the program
 
 retptr:
-    rti
+    rti         ; ReTurn from Interrupt, returns execution to where it was
+                ; when BRK was called
 
 texthello:
-    .text "Hello, World!\n" ; some text
+    .text "Hello, World!\n" ; a string literal stored in the ROM
