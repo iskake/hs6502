@@ -53,19 +53,16 @@ rundebugger lastCmd cpu = do
               else do
                 B.putStr ("A FATAL ERROR OCCURRED:\n  " <> a <> "\n")
                 putStrLn "\nDEBUG: continuing execution at last valid CPU state..."
-            putStrLn (printCPUState cpustate)
-            putStrLn (printNextInstr cpustate)
+            printCPUInfo cpustate
             rundebugger cmd cpu
           Right () -> do
-            putStrLn (printCPUState cpustate'')
-            putStrLn (printNextInstr cpustate'')
+            printCPUInfo cpustate''
             breakHandler cpustate cpustate'' (\c -> rundebugger cmd (return (result, c)))
     ["c"] -> do
       keepRunningCPUState cpu  -- runs forever
     ["p"] -> do
       (_,cpustate) <- cpu
-      putStrLn (printCPUState cpustate)
-      putStrLn (printNextInstr cpustate)
+      printCPUInfo cpustate
       rundebugger cmd cpu
     ["x"] -> do
       (_,cpustate) <- cpu
@@ -128,6 +125,11 @@ rundebugger lastCmd cpu = do
       putStrLn "Use `h` or `help` to print help information."
       rundebugger cmd cpu
 
+printCPUInfo :: Memory a => CPUState a -> IO ()
+printCPUInfo cpustate = do
+  putStrLn (printCPUState cpustate)
+  putStrLn (printNextInstr cpustate)
+
 syscallPrint :: Integral a => a
 syscallPrint = 0x01
 
@@ -162,8 +164,7 @@ keepRunningCPUState cpu = do
           else do
             B.putStr ("A FATAL ERROR OCCURRED:\n  " <> a <> "\n")
             putStrLn "\nDEBUG: continuing execution at last valid CPU state..."
-            putStrLn (printCPUState cpustate)
-            putStrLn (printNextInstr cpustate)
+            printCPUInfo cpustate
             rundebugger ["s"] cpu
       Right () -> breakHandler cpustate cpustate'' (const (keepRunningCPUState r))
 
