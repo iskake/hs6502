@@ -64,6 +64,9 @@ disasSect from to mem | from >= to = []
                         next = asAddress (readAddr mem (from+1)) (readAddr mem (from+2))
                         (i, a, f) = disasOp op
 
+asList :: Memory a => Word16 -> CPUState a -> [Word8]
+asList startAddr c = addrRead c startAddr : asList (startAddr+1) c
+
 addrModeArgCount :: Num a => AddrMode -> a
 addrModeArgCount Imp  = 0
 addrModeArgCount Acc  = 0

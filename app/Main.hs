@@ -31,12 +31,15 @@ loadFile fileName = do
 
   putStrLn "\nhs6502 debugger"
   putStrLn "Type `h` for help."
-  runDebugger (runCPU (return ()) (emptyState (memCreate x (B.length file))))
+  rundebugger ["h"] (runCPU (return ()) (emptyState (memCreate x (B.length file))))
 
-runDebugger cpu = do
+rundebugger lastCmd cpu = do
   B.putStr $ " > "
   command <- getLine
-  let cmd = words command
+  let cmd' = words command
+  let cmd = if null cmd'
+              then lastCmd
+              else cmd'
   case cmd of
     ["s"] -> do
       (_,cpustate) <- cpu
@@ -46,35 +49,24 @@ runDebugger cpu = do
       case result of
           Left a -> do
             if B.null a
-              then putStrLn "Program execution finished." >> putStrLn "Debugger is still running!"
+              then putStrLn "Program execution finished." >> putStrLn "Debugger is still running! Use `q` to quit.\n"
               else do
                 B.putStr ("A FATAL ERROR OCCURRED:\n  " <> a <> "\n")
                 putStrLn "\nDEBUG: continuing execution at last valid CPU state..."
             putStrLn (printCPUState cpustate)
             putStrLn (printNextInstr cpustate)
-            runDebugger cpu
+            rundebugger cmd cpu
           Right () -> do
-            let p = rP cpustate''
-            let b = fB p
-            if b
-              then do
-                let cpustate''' =  cpustate'' {rP = (rP cpustate'') {fB = False}}
-                putStrLn "BRK called!!! (currently does nothing...)"
-                putStrLn (printCPUState cpustate''')
-                putStrLn (printNextInstr cpustate''')
-                runDebugger (return (Right (), cpustate'''))
-              else do
-                putStrLn (printCPUState cpustate'')
-                putStrLn (printNextInstr cpustate'')
-                runDebugger (return (Right (), cpustate''))
+            putStrLn (printCPUState cpustate'')
+            putStrLn (printNextInstr cpustate'')
+            breakHandler cpustate cpustate'' (\c -> rundebugger cmd (return (result, c)))
     ["c"] -> do
-      -- c <- cpu
       keepRunningCPUState cpu  -- runs forever
     ["p"] -> do
       (_,cpustate) <- cpu
       putStrLn (printCPUState cpustate)
       putStrLn (printNextInstr cpustate)
-      runDebugger cpu
+      rundebugger cmd cpu
     ["x"] -> do
       (_,cpustate) <- cpu
       let pc = rPC cpustate
@@ -83,7 +75,7 @@ runDebugger cpu = do
       f pc'
       f (pc'+16)
       f (pc'+32)
-      runDebugger cpu
+      rundebugger cmd cpu
     ["x", x] -> do
       (_,cpustate) <- cpu
       case readMaybe x of
@@ -93,33 +85,33 @@ runDebugger cpu = do
           f (x'+16)
           f (x'+32)
         _ -> putStrLn "x - Examine memory address\nUsage: `x [addr]`"
-      runDebugger cpu
+      rundebugger cmd cpu
     "x":_ -> do
       putStrLn "x - Examine memory address\nUsage: `x [addr]`"
-      runDebugger cpu
+      rundebugger cmd cpu
     ["d"] -> do
       (_,cpustate) <- cpu
       let pc = (rPC cpustate)
       let mem = (cMem cpustate)
       mapM_ print (disasSect pc (pc+15) mem)
-      runDebugger cpu
+      rundebugger cmd cpu
     ["d", x, y] -> do
       (_,cpustate) <- cpu
       case (readMaybe x, readMaybe y) of
           (Just x', Just y') -> mapM_ print (disasSect x' y' (cMem cpustate))
           _ -> putStrLn "d - Disassemble section.\nUsage: `d fromAddr toAddr`"
-      runDebugger cpu
+      rundebugger cmd cpu
     ["w", x, y] -> do
       (_,cpustate) <- cpu
       case (readMaybe x, readMaybe y) of
-          (Just val, Just addr) -> runDebugger (return (Right (), addrWrite cpustate addr val)) -- weirdly written...
-          _ -> putStrLn "w - Write a value to memory.\nUsage: `w value address`" >> runDebugger cpu
+          (Just val, Just addr) -> rundebugger cmd (return (Right (), addrWrite cpustate addr val)) -- weirdly written...
+          _ -> putStrLn "w - Write a value to memory.\nUsage: `w value address`" >> rundebugger cmd cpu
     ["l", x] -> do
       loadFile x
     "l":_ -> do
       putStrLn "l - Load a new program \nUsage: `l filename`"
-      runDebugger cpu
-    [x] | x `elem` ["h", "help"] -> printHelp >> runDebugger cpu
+      rundebugger cmd cpu
+    [x] | x `elem` ["h", "help"] -> printHelp >> rundebugger cmd cpu
     ["hi"] -> do
       putStrLn "List of valid instructions (format: `$op: inst`)"
       mapM_ printInstFromOp [0..255]
@@ -128,18 +120,41 @@ runDebugger cpu = do
       putStrLn "      `$ffff` is any 16-bit hex number, and can be written in assembly as either"
       putStrLn "     any value from $0000-ffff (0-65535) or as any known label                  "
       putStrLn "     (labels do not show up in this debugger, instead their memory address is.) "
-      runDebugger cpu
-    [x] | x `elem` ["q", "quit", "exit"] -> putStrLn "Bye!"
-    [] -> runDebugger cpu
-    _ -> do
-      putStrLn "?"  -- just like ed intened
-      runDebugger cpu
+      rundebugger cmd cpu
+    [x] | x `elem` ["q", "quit", "exit"] -> putStrLn "Closing debugger... bye!"
+    [] -> rundebugger cmd cpu
+    x -> do
+      putStrLn $ "Unknown command: '" <> unwords x <> "'"
+      putStrLn "Use `h` or `help` to print help information."
+      rundebugger cmd cpu
+
+syscallPrint :: Integral a => a
+syscallPrint = 0x01
+
+breakHandler cpustate cpustate'' f = do
+  let a = rA cpustate''
+  let p = rP cpustate''
+  let b = fB p
+  if b && a == syscallPrint
+    then do
+      let cpustate''' =  cpustate'' {rP = (rP cpustate'') {fB = False}}
+      -- putStrLn "BRK called!"
+
+      (lb, c) <- (return . pullByte) cpustate
+      (mb, _) <- (return . pullByte) c
+      let addr = asAddress lb mb
+      let s = map w8ToC (takeUntil (/= 0) (asList addr c))
+      putStr s
+
+      f cpustate'''
+    else do
+      f cpustate''
 
 keepRunningCPUState cpu = do
   (_,cpustate) <- cpu
   let (op, cpustate') = pcReadInc cpustate
   let r = (runCPU (runOP op) cpustate')
-  (result,_) <- r
+  (result,cpustate'') <- r
   case result of
       Left a -> do
         if B.null a
@@ -149,8 +164,8 @@ keepRunningCPUState cpu = do
             putStrLn "\nDEBUG: continuing execution at last valid CPU state..."
             putStrLn (printCPUState cpustate)
             putStrLn (printNextInstr cpustate)
-            runDebugger cpu
-      Right () -> keepRunningCPUState r
+            rundebugger ["s"] cpu
+      Right () -> breakHandler cpustate cpustate'' (const (keepRunningCPUState r))
 
 printHelp :: IO ()
 printHelp = do
@@ -165,3 +180,9 @@ printHelp = do
   putStrLn "  l  - Load a program to run and debug."
   putStrLn "  hi - Show a list of all valid instructions and their coressponding opcode."
   putStrLn "  h  - show this help text."
+
+takeUntil :: (a -> Bool) -> [a] -> [a]
+takeUntil _ [] = []
+takeUntil p (x:xs) = x : if p x
+                            then takeUntil p xs
+                            else []
