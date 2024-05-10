@@ -20,9 +20,22 @@ To run the emulator use `cabal build` to build each part, or simply use `cabal r
 ~ $ cabal -O2 run hs6502 program.bin
 ```
 
-## more...
+## Assembling and running programs
 
-todo todo todo....
+Example programs are available in the `examples/` folder. To assemble them, simply run the assembler on every file:
+
+```sh
+~ $ cabal -O2 run assembler examples/*.s
+```
+
+And run them as was shown above.
+
+## Creating your own programs
+
+You can also create and assemble your own programs.
+
+todo... check out https://www.nesdev.org/obelisk-6502-guide/ if you are actually interested in doing this.
+
 
 ## Useful and helpful sources
 
