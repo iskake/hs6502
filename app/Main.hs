@@ -10,7 +10,7 @@ import Memory
 import Data.Bits ((.&.))
 
 import System.Environment
-import System.Exit (exitFailure)
+import System.Exit (exitFailure, exitSuccess)
 import Text.Read (readMaybe)
 
 main :: IO ()
@@ -19,6 +19,10 @@ main = do
   fileName <- case args of
       [] -> B.putStr "Filename: " >> getLine
       a:_ -> return a
+  loadFile fileName
+
+loadFile :: FilePath -> IO ()
+loadFile fileName = do
   putStrLn $ "Running file: " <> fileName
   file <- B.readFile fileName
   -- print $ file
@@ -71,15 +75,6 @@ runDebugger cpu = do
       putStrLn (printCPUState cpustate)
       putStrLn (printNextInstr cpustate)
       runDebugger cpu
-    ["pi"] -> do
-      putStrLn "List of valid instructions (format: `$op: inst`)"
-      mapM_ printInstFromOp [0..255]
-      putStrLn "Note: `$ff` is used here to represent any 8-bit hexadecimal number, and can be  "
-      putStrLn "     written in assembly as any value from $00-$ff (0-255).                     "
-      putStrLn "      `$ffff` is any 16-bit hex number, and can be written in assembly as either"
-      putStrLn "     any value from $0000-ffff (0-65535) or as any known label                  "
-      putStrLn "     (labels do not show up in this debugger, instead their memory address is.) "
-      runDebugger cpu
     ["x"] -> do
       (_,cpustate) <- cpu
       let pc = rPC cpustate
@@ -119,7 +114,21 @@ runDebugger cpu = do
       case (readMaybe x, readMaybe y) of
           (Just val, Just addr) -> runDebugger (return (Right (), addrWrite cpustate addr val)) -- weirdly written...
           _ -> putStrLn "w - Write a value to memory.\nUsage: `w value address`" >> runDebugger cpu
+    ["l", x] -> do
+      loadFile x
+    "l":_ -> do
+      putStrLn "l - Load a new program \nUsage: `l filename`"
+      runDebugger cpu
     [x] | x `elem` ["h", "help"] -> printHelp >> runDebugger cpu
+    ["hi"] -> do
+      putStrLn "List of valid instructions (format: `$op: inst`)"
+      mapM_ printInstFromOp [0..255]
+      putStrLn "Note: `$ff` is used here to represent any 8-bit hexadecimal number, and can be  "
+      putStrLn "     written in assembly as any value from $00-$ff (0-255).                     "
+      putStrLn "      `$ffff` is any 16-bit hex number, and can be written in assembly as either"
+      putStrLn "     any value from $0000-ffff (0-65535) or as any known label                  "
+      putStrLn "     (labels do not show up in this debugger, instead their memory address is.) "
+      runDebugger cpu
     [x] | x `elem` ["q", "quit", "exit"] -> putStrLn "Bye!"
     [] -> runDebugger cpu
     _ -> do
@@ -153,5 +162,6 @@ printHelp = do
   putStrLn "  d  - Disassemble the memory at the specified memory address, or (if given no argument,) at the program counter."
   putStrLn "  w  - Write the specified byte to the specified memory address."
   putStrLn "  p  - Print the current CPU state, including register values and the next instruction to be run."
-  putStrLn "  pi - Show a list of all valid instructions and their coressponding opcode."
+  putStrLn "  l  - Load a program to run and debug."
+  putStrLn "  hi - Show a list of all valid instructions and their coressponding opcode."
   putStrLn "  h  - show this help text."
