@@ -2,7 +2,6 @@
 
 module Main where
 
--- import Control.Applicative (show)
 import Control.Monad
 import Data.Text (Text)
 import Data.Void
@@ -24,61 +23,27 @@ import qualified Data.Text.IO as T
 import qualified Data.ByteString as B
 import System.Exit (exitFailure)
 
-main :: IO ()
-main = do
-    args <- getArgs
-    case args of
-        [] -> putStrLn "usage: assembler filename" >> exitFailure
-        _ -> mapM_ (\x -> putStrLn ("Assembling file " <> x) >> assembleFile x) args
 
-assembleFile :: FilePath -> IO ()
-assembleFile filename = do
-    file <- T.readFile (filename)
-    let ls = (filter (\x -> (T.head x) /= ';') -- TODO: replace with (many . pLegal) so we don't lose line numbers in error messages?
-            . map T.strip
-            . filter (/= "")
-            . T.lines)
-            file
-    -- print ls
-    case mapM (runParser (sc >> pLegal) "") ls of
-        Left failures -> mapM_ (putStrLn . errorBundlePretty) [failures] >> exitFailure
-        Right l -> do
-            -- let regions = getRegions x -- TODO
-            let labels = getLabels l Map.empty 0x8000--regions x -- TODO
-            -- print labels
-            let asm = map (tryAssemble labels) l
-            -- print asm
-            mapM_ (either (\a -> T.putStrLn $ "Assembly error: " <> a) (\_ -> return ())) asm
-            case sequence asm of
-                Left _ -> T.putStrLn "  Errors encountered while assembling!! stopping..." >> exitFailure
-                Right val -> B.writeFile (replaceExtension filename "bin") (B.pack (concat val)) >> putStrLn ("Successfully assembled " <> (replaceExtension filename "bin"))
+------------------------------------------------------------------------------
+--                                                                          --
+--                                 Parsing                                  --
+--                                                                          --
+------------------------------------------------------------------------------
 
-tryAssemble :: Map Label Word16 -> SourceLine -> Either Text [Word8]
-tryAssemble labels (Ins i) = assemble (labelReplace i labels)
-tryAssemble _ (Bytes bs)   = Right bs
-tryAssemble _ (Lab _)      = Right []
-tryAssemble _ (Region _)   = Right []
-
--- getRegions :: [SourceLine] -> Word16 -> Word16 -> [Region]
--- getRegions [] _ _ = []
--- getRegions ((Ins (_, a, _)):xs) last len = (1 + addrModeArgCount a)
-
-getLabels :: [SourceLine] -> Map.Map Label Word16 -> Word16 -> Map.Map Label Word16
-getLabels [] m _ = m
-getLabels ((Ins (_, a, _)):xs)  m i = getLabels xs m (i + 1 + (addrModeArgCount a))
-getLabels ((Bytes bs):xs) m i = getLabels xs m (i + w16 (length bs))
-getLabels ((Lab l):xs)    m i = getLabels xs (Map.insert l i m) i
-getLabels ((Region _):xs) m i = getLabels xs m i
-
-
-data Region = Regi Word16 Int
-
+type Argument = Maybe (Either Word8 (Either Word16 Label))
+type SourceInstruction = (Inst, AddrMode, Argument)
+type Label = Text
+type Bytes = [Word8]
+-- data Region = Regi Word16 Int
 
 data SourceLine = Ins SourceInstruction
                 | Lab Label
-                | Bytes [Word8]
+                | Bytes Bytes
                 | Region Word16
                 deriving (Show)
+
+type Parser = Parsec Void Text
+
 
 pLegal :: Parser SourceLine
 pLegal = try (pLabel <&> Lab)
@@ -86,10 +51,47 @@ pLegal = try (pLabel <&> Lab)
      <|> try (pRegion <&> Region)
      <|> (pInstruction <&> Ins)
 
-type Parser = Parsec Void Text
 
-type Label = Text
-type Argument = Maybe (Either Word8 (Either Word16 Label))
+pLabel :: Parser Label
+pLabel = do
+    -- void (char '.')
+    sc
+    s <- T.pack <$> some letterChar
+    void (char ':')
+    return s
+
+pRegion :: Parser Word16
+pRegion = do
+    sc
+    void (string' ".region")
+    sc
+    pWord16
+
+pByte :: Parser Bytes
+pByte = do
+    sc
+    try (void (string' ".db") *> sc *> many pWord8) <|> try (void (string' ".text") *> sc *> pString)
+
+pString :: Parser Bytes
+pString = do
+    cs <- char '\"' *> manyTill asciiChar (char '\"')
+    return $ map cToW8 (unescape cs)
+
+unescape :: String -> String
+unescape [] = []
+unescape ('\\':'n':str) = '\n':unescape str
+unescape ('\\':'0':str) = '\0':unescape str
+unescape (s:str) = s:unescape str
+
+
+pInstruction :: Parser SourceInstruction
+pInstruction = do
+    sc
+    inst <- pInst <?> "valid instruction"
+    sc
+    (amode, arg) <- pAddrMode
+    sc
+    return (inst, amode, arg)
 
 pInst :: Parser Inst
 pInst = choice
@@ -152,28 +154,6 @@ pInst = choice
     , STP <$ string' "STP"
     , ILL <$ string' "ILL" ]
 
-pLabel :: Parser Label
-pLabel = do
-    -- void (char '.')
-    sc
-    s <- T.pack <$> some letterChar
-    void (char ':')
-    return s
-
-pByte :: Parser [Word8]
-pByte = do
-    sc
-    void (string' ".db")
-    sc
-    many pWord8
-
-pRegion :: Parser Word16
-pRegion = do
-    sc
-    void (string' ".region")
-    sc
-    pWord16
-
 pAddrMode :: Parser (AddrMode, Argument)
 pAddrMode = try imm  <|>
             try zpx  <|>
@@ -221,25 +201,33 @@ pWord16OrLabel = do
     try ((T.pack <$> some letterChar) <&> Right)
              <|> (pWord16 <&> Left)
 
+lexeme :: Parser a -> Parser a
+lexeme = L.lexeme sc
+
 sc0 :: Parser ()
 sc0 = L.space space (L.skipLineComment ";") empty
 
 sc :: Parser ()
 sc = L.space space1 (L.skipLineComment ";") empty
 
-lexeme :: Parser a -> Parser a
-lexeme = L.lexeme sc
 
-type SourceInstruction = (Inst, AddrMode, Argument)
 
-pInstruction :: Parser SourceInstruction
-pInstruction = do
-    sc
-    inst <- pInst <?> "valid instruction"
-    sc
-    (amode, arg) <- pAddrMode
-    sc
-    return (inst, amode, arg)
+------------------------------------------------------------------------------
+--                                                                          --
+--                              Assembling                                  --
+--                                                                          --
+------------------------------------------------------------------------------
+
+-- getRegions :: [SourceLine] -> Word16 -> Word16 -> [Region]
+-- getRegions [] _ _ = []
+-- getRegions ((Ins (_, a, _)):xs) last len = (1 + addrModeArgCount a)
+
+getLabels :: [SourceLine] -> Map.Map Label Word16 -> Word16 -> Map.Map Label Word16
+getLabels [] m _ = m
+getLabels ((Ins (_, a, _)):xs)  m i = getLabels xs m (i + 1 + (addrModeArgCount a))
+getLabels ((Bytes bs):xs) m i = getLabels xs m (i + w16 (length bs))
+getLabels ((Lab l):xs)    m i = getLabels xs (Map.insert l i m) i
+getLabels ((Region _):xs) m i = getLabels xs m i
 
 labeler :: Argument -> Map Label Word16 -> Maybe (Either Word8 Word16)
 labeler (Just (Right (Right l))) m = Map.lookup l m >>= Just . Right
@@ -412,3 +400,39 @@ assemble ins@(Instruction i m a) = do
                 (Left  w) -> "$" <> (T.pack (hex8 w)) <> " as"
                 (Right w) -> "$" <> (T.pack (hex16 w)) <> " as"
     Left ("  Failed to assemble instruction " <> T.pack (show i) <> " with " <> T.pack (show m) <> " addressing mode and " <> ar <> " argument (`" <> T.pack (show ins) <> "`)")
+
+tryAssemble :: Map Label Word16 -> SourceLine -> Either Text [Word8]
+tryAssemble labels (Ins i) = assemble (labelReplace i labels)
+tryAssemble _ (Bytes bs)   = Right bs
+tryAssemble _ (Lab _)      = Right []
+tryAssemble _ (Region _)   = Right []
+
+assembleFile :: FilePath -> IO ()
+assembleFile filename = do
+    file <- T.readFile (filename)
+    let ls = (filter (\x -> (T.head x) /= ';') -- TODO: replace with (many . pLegal) so we don't lose line numbers in error messages?
+            . map T.strip
+            . filter (/= "")
+            . T.lines)
+            file
+    -- print ls
+    case mapM (runParser (sc >> pLegal) "") ls of
+        Left failures -> mapM_ (putStrLn . errorBundlePretty) [failures] >> exitFailure
+        Right l -> do
+            -- let regions = getRegions x -- TODO
+            let labels = getLabels l Map.empty 0x8000--regions x -- TODO
+            -- print labels
+            let asm = map (tryAssemble labels) l
+            -- print asm
+            mapM_ (either (\a -> T.putStrLn $ "Assembly error: " <> a) (\_ -> return ())) asm
+            case sequence asm of
+                Left _ -> T.putStrLn "  Errors encountered while assembling!! stopping..." >> exitFailure
+                Right val -> B.writeFile (replaceExtension filename "bin") (B.pack (concat val)) >> putStrLn ("Successfully assembled " <> (replaceExtension filename "bin"))
+
+-- Main function
+main :: IO ()
+main = do
+    args <- getArgs
+    case args of
+        [] -> putStrLn "usage: assembler filename" >> exitFailure
+        _ -> mapM_ (\x -> putStrLn ("Assembling file " <> x) >> assembleFile x) args
