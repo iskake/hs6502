@@ -69,8 +69,8 @@ runDebugger cpu = do
       putStrLn (printNextInstr cpustate)
       runDebugger cpu
     ["pi"] -> do
-      putStrLn "List of instructions:"
-      mapM_ (\x -> putStrLn (hex8 x <> ": " <> show (disasOpToInst x 0xffff))) [0..255]
+      putStrLn "List of valid instructions (format: `$op: inst`)"
+      mapM_ printInstFromOp [0..255]
       putStrLn "Note: `$ff` is used here to represent any 8-bit hexadecimal number, and can be  "
       putStrLn "     written in assembly as any value from $00-$ff (0-255).                     "
       putStrLn "      `$ffff` is any 16-bit hex number, and can be written in assembly as either"
@@ -127,7 +127,7 @@ keepRunningCPUState cpu = do
   (_,cpustate) <- cpu
   let (op, cpustate') = pcReadInc cpustate
   let r = (runCPU (runOP op) cpustate')
-  (result,b) <- r
+  (result,_) <- r
   case result of
       Left a -> do
         B.putStr ("A FATAL ERROR OCCURRED:\n  " <> a <> "\n")

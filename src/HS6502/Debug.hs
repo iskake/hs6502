@@ -21,9 +21,9 @@ addrModeShow Rel  (Just val) = "$" <> hex8Or16 val
 addrModeShow Abs  (Just val) = "$" <> hex8Or16 val
 addrModeShow AbsX (Just val) = "$" <> hex8Or16 val <> ",x"
 addrModeShow AbsY (Just val) = "$" <> hex8Or16 val <> ",y"
-addrModeShow Ind  (Just val) = "[$" <> hex8Or16 val <> "]"
-addrModeShow IndX (Just val) = "[$" <> hex8Or16 val <> ",x]"
-addrModeShow IndY (Just val) = "[$" <> hex8Or16 val <> "],y"
+addrModeShow Ind  (Just val) = "($" <> hex8Or16 val <> ")"
+addrModeShow IndX (Just val) = "($" <> hex8Or16 val <> ",x)"
+addrModeShow IndY (Just val) = "($" <> hex8Or16 val <> "),y"
 addrModeShow _ _ = ""
 
 hex8Or16 :: Either Word8 Word16 -> String
@@ -50,6 +50,11 @@ disasOpToInst op addr = Instruction i a v
     where
         (i,a,f) = disasOp op
         v = f addr
+
+printInstFromOp :: Word8 -> IO ()
+printInstFromOp x = if i == ILL then return () else putStrLn ("$" <> hex8 x <> ": " <> show ins)
+    where
+        ins@(Instruction i _ _) = disasOpToInst x 0xffff
 
 disasSect :: Memory a => Word16 -> Word16 -> a -> [Instruction]
 disasSect from to mem | from >= to = []

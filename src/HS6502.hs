@@ -234,7 +234,7 @@ data Inst = ADC | AND | ASL | BCC | BCS | BEQ | BIT | BMI | BNE | BPL | BRK | BV
           | JSR | LDA | LDX | LDY | LSR | NOP | ORA | PHA | PHP | PLA | PLP | ROL | ROR | RTI
           | RTS | SBC | SEC | SED | SEI | STA | STX | STY | TAX | TAY | TSX | TXA | TXS | TYA
           | ILL -- Illegal instruction, one of the undefined opcodes
-          deriving (Show)
+          deriving (Show,Eq)
 
 -- | CPU Addressing Modes
 -- 
@@ -252,7 +252,7 @@ data AddrMode = Imp     -- Implicit
               | Ind     -- Indirect
               | IndX    -- Indexed Indirect (X)
               | IndY    -- Indexed Indirect (Y)
-              deriving (Show)
+              deriving (Show,Eq)
 
 -- | Index registers
 -- 
