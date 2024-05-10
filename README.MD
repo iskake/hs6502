@@ -34,7 +34,7 @@ And run them as was shown above.
 
 You can also create and assemble your own programs.
 
-todo... check out https://www.nesdev.org/obelisk-6502-guide/ if you are actually interested in doing this.
+todo... check out https://www.nesdev.org/obelisk-6502-guide/ and the `hi` command in the debugger if you are actually interested in doing this.
 
 
 ## Useful and helpful sources
