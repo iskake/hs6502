@@ -215,7 +215,7 @@ pushByte c@(CPUState _ _ _ _ sp _ mem) val = c {rSP = sp-1, cMem = writeAddr mem
 
 -- | Pull one byte from the stack, incrementing the stack pointer.
 pullByte :: Memory a => CPUState a -> (Word8, CPUState a)
-pullByte c@(CPUState _ _ _ _ sp _ mem) = (readAddr mem (asAddress sp 0x01), c {rSP = sp+1})
+pullByte c@(CPUState _ _ _ _ sp _ mem) = (readAddr mem (asAddress (sp + 1) 0x01), c {rSP = sp+1})
 
 ---------------------------------------
 --
@@ -268,176 +268,6 @@ idx None _ = 0
 idx X c = fromIntegral (rX c)
 idx Y c = fromIntegral (rY c)
 
--- | Run a specific instruction on the cpu state
-{- runInst :: Memory a => Inst -> AddrMode -> CPUState a -> CPUState a
-runInst NOP _ c = c
-
-runInst BRK _ c = do
-    let p = rP c
-    let pc = rPC c
-    let c' = pushByte c (msb pc)
-    let c'' = pushByte c' (lsb pc)
-    let newc = pushByte c'' (destructP p)
-
-    let addr = getIndirect 0xfffe newc
-    newc {rPC = addr, rP = p {fB = True}}
-
-runInst ADC mode c = addsub id mode c
-runInst SBC mode c = addsub (.^. 0xff) mode c
-
-runInst AND mode c = bitwise (.&.) mode c
-runInst ORA mode c = bitwise (.|.) mode c
-runInst EOR mode c = bitwise (.^.) mode c
-
-runInst BIT mode c = do
-    let (val,newc) = (case mode of
-                    ZP  -> zeroPageReadInc
-                    Abs -> absReadInc
-                    _   -> error "Unreachable") None c
-    let a = rA c
-    let val' = a .&. val
-
-    let newP = (rP c) {fZ = val' == 0, fV = val `testBit` 6, fN = val `testBit` 7}
-    newc {rP = newP}
-
-runInst ASL Acc  c = let val = rA c .<<. 1 in c {rA = val,                               rP = (rP c) {fC = rA c `testBit` 7, fZ = val == 0, fN = val `testBit` 7}}
-runInst ROL Acc  c = let val = rA c .<<. 1 in c {rA = val .|. bToI (fC (rP c)),          rP = (rP c) {fC = rA c `testBit` 7, fZ = val == 0, fN = val `testBit` 7}}
-runInst LSR Acc  c = let val = rA c .>>. 1 in c {rA = val,                               rP = (rP c) {fC = rA c `testBit` 0, fZ = val == 0, fN = val `testBit` 7}}
-runInst ROR Acc  c = let val = rA c .>>. 1 in c {rA = val .|. (bToI (fC (rP c)) .<<. 7), rP = (rP c) {fC = rA c `testBit` 0, fZ = val == 0, fN = val `testBit` 7}}
-
-runInst ASL mode c = let (val,newc) = memReadWrite (.<<. 1) mode c                                         in newc {rP = (rP newc) {fC = val `testBit` 7}}
-runInst ROL mode c = let (val,newc) = memReadWrite (\x -> (x .<<. 1) .|. bToI (fC (rP c))) mode c          in newc {rP = (rP newc) {fC = val `testBit` 7}}
-runInst LSR mode c = let (val,newc) = memReadWrite (.>>. 1) mode c                                         in newc {rP = (rP newc) {fC = val `testBit` 0}}
-runInst ROR mode c = let (val,newc) = memReadWrite (\x -> (x .>>. 1) .|. (bToI (fC (rP c)) .<<. 7)) mode c in newc {rP = (rP newc) {fC = val `testBit` 0}}
-
-runInst CLC _ c = c {rP = (rP c) {fC = False}}
-runInst CLD _ c = c {rP = (rP c) {fD = False}}  -- Note: Binary Coded Decimal (BCD) is not implemented
-runInst CLI _ c = c {rP = (rP c) {fI = False}}
-runInst CLV _ c = c {rP = (rP c) {fV = False}}
-runInst SEC _ c = c {rP = (rP c) {fC = True}}
-runInst SED _ c = c {rP = (rP c) {fD = True}}   -- Note: Binary Coded Decimal (BCD) is not implemented
-runInst SEI _ c = c {rP = (rP c) {fI = True}}
-
-runInst CMP mode c = cmpr (rA c) mode c
-runInst CPX mode c = cmpr (rX c) mode c
-runInst CPY mode c = cmpr (rY c) mode c
-
-runInst INC mode c = let (_,newc) = memReadWrite         (+1) mode c in newc
-runInst DEC mode c = let (_,newc) = memReadWrite (subtract 1) mode c in newc
-
-runInst INX _ c = let val = rX c + 1 in c {rX = val, rP = (rP c) {fZ = val == 0, fN = val `testBit` 7}}
-runInst DEX _ c = let val = rX c - 1 in c {rX = val, rP = (rP c) {fZ = val == 0, fN = val `testBit` 7}}
-runInst INY _ c = let val = rY c + 1 in c {rY = val, rP = (rP c) {fZ = val == 0, fN = val `testBit` 7}}
-runInst DEY _ c = let val = rY c - 1 in c {rY = val, rP = (rP c) {fZ = val == 0, fN = val `testBit` 7}}
-
-runInst BCC _ c = let (val,newc) = pcReadInc c in if       fC (rP newc) then newc {rPC = rPC newc + w16 (s8 val)} else newc
-runInst BCS _ c = let (val,newc) = pcReadInc c in if not $ fC (rP newc) then newc {rPC = rPC newc + w16 (s8 val)} else newc
-runInst BEQ _ c = let (val,newc) = pcReadInc c in if       fZ (rP newc) then newc {rPC = rPC newc + w16 (s8 val)} else newc
-runInst BNE _ c = let (val,newc) = pcReadInc c in if not $ fZ (rP newc) then newc {rPC = rPC newc + w16 (s8 val)} else newc
-runInst BMI _ c = let (val,newc) = pcReadInc c in if       fN (rP newc) then newc {rPC = rPC newc + w16 (s8 val)} else newc
-runInst BPL _ c = let (val,newc) = pcReadInc c in if not $ fN (rP newc) then newc {rPC = rPC newc + w16 (s8 val)} else newc
-runInst BVC _ c = let (val,newc) = pcReadInc c in if       fV (rP newc) then newc {rPC = rPC newc + w16 (s8 val)} else newc
-runInst BVS _ c = let (val,newc) = pcReadInc c in if not $ fV (rP newc) then newc {rPC = rPC newc + w16 (s8 val)} else newc
-
-runInst JMP mode c = do
-    let (val,newc) = case mode of
-                    Ind -> indRead16Inc None c
-                    Abs -> pcRead16Inc c
-                    _   -> error "Unreachable"
-    newc {rPC = val}
-runInst JSR _ c = do
-    let (addr, newc) = pcRead16Inc c
-    let pc = rPC newc - 1
-    let newc' = pushByte newc (msb pc)
-    let newc'' = pushByte newc' (lsb pc)
-    newc'' {rPC = addr}
-runInst RTS _ c = do
-    let (lb, c') = pullByte c
-    let (mb, newc) = pullByte c'
-    newc {rPC = (asAddress lb mb) + 1}
-runInst RTI _ c = do
-    let (p, c') = pullByte c
-    let (lb, c'') = pullByte c'
-    let (mb, newc) = pullByte c''
-    newc {rPC = asAddress lb mb, rP = constructP p}
-
-runInst LDA mode c = do
-    let (val,newc) = case mode of
-                    Imm  -> pcReadInc c
-                    ZP   -> zeroPageReadInc None c
-                    ZPX  -> zeroPageReadInc X c
-                    Abs  -> absReadInc None c
-                    AbsX -> absReadInc X c
-                    AbsY -> absReadInc Y c
-                    IndX -> indReadInc X c
-                    IndY -> indReadInc Y c
-                    _    -> error "Unreachable"
-    let z = val == 0
-    let n = val `testBit` 7
-    let newP = (rP newc) {fZ = z, fN = n}
-    newc {rA = val, rP = newP}
-runInst LDX mode c = do
-    let (val,newc) = case mode of
-                    Imm  -> pcReadInc c
-                    ZP   -> zeroPageReadInc None c
-                    ZPY  -> zeroPageReadInc Y c
-                    Abs  -> absReadInc None c
-                    AbsY -> absReadInc Y c
-                    _    -> error "Unreachable"
-    let z = val == 0
-    let n = val `testBit` 7
-    let newP = (rP newc) {fZ = z, fN = n}
-    newc {rX = val, rP = newP}
-runInst LDY mode c = do
-    let (val,newc) = case mode of
-                    Imm  -> pcReadInc c
-                    ZP   -> zeroPageReadInc None c
-                    ZPX  -> zeroPageReadInc X c
-                    Abs  -> absReadInc None c
-                    AbsX -> absReadInc X c
-                    _    -> error "Unreachable"
-    let z = val == 0
-    let n = val `testBit` 7
-    let newP = (rP newc) {fZ = z, fN = n}
-    newc {rY = val, rP = newP}
-runInst STA mode c = (case mode of
-                        ZP   -> zpWrite None
-                        ZPX  -> zpWrite X
-                        Abs  -> absWriteInc None
-                        AbsX -> absWriteInc X
-                        AbsY -> absWriteInc Y
-                        IndX -> indWriteInc X
-                        IndY -> indWriteInc Y
-                        _    -> error "Unreachable") c (rA c)
-runInst STX mode c = (case mode of
-                        ZP   -> zpWrite None
-                        ZPY  -> zpWrite Y
-                        Abs  -> absWriteInc None
-                        _    -> error "Unreachable") c (rX c)
-runInst STY mode c = (case mode of
-                        ZP   -> zpWrite None
-                        ZPX  -> zpWrite X
-                        Abs  -> absWriteInc None
-                        _    -> error "Unreachable") c (rY c)
-
-runInst PHA _ c = pushByte c (rA c)
-runInst PHP _ c = pushByte c (destructP $ rP c)
-runInst PLA _ c = let (val,newc) = pullByte c in newc {rA = val, rP = (rP c) {fZ = val == 0, fN = val `testBit` 7}}
-runInst PLP _ c = let (val,newc) = pullByte c in newc {rP = constructP val}
-
-runInst TAX _ c = let a = rA c  in c {rX  = a, rP = (rP c) {fZ = a == 0, fN = a `testBit` 7}}
-runInst TAY _ c = let a = rA c  in c {rY  = a, rP = (rP c) {fZ = a == 0, fN = a `testBit` 7}}
-runInst TSX _ c = let s = rSP c in c {rY  = s, rP = (rP c) {fZ = s == 0, fN = s `testBit` 7}}
-runInst TXA _ c = let x = rX c  in c {rA  = x, rP = (rP c) {fZ = x == 0, fN = x `testBit` 7}}
-runInst TXS _ c = let x = rX c  in c {rSP = x, rP = (rP c) {fZ = x == 0, fN = x `testBit` 7}}
-runInst TYA _ c = let y = rY c  in c {rA  = y, rP = (rP c) {fZ = y == 0, fN = y `testBit` 7}}
-
-runInst ILL _ _ = error $ "Undefined instruction"
--}
-
-
-
-
 
 -- | Run a specific instruction on the cpu
 runInstS :: Memory a => Inst -> AddrMode -> CPU () a -- TODO?
@@ -446,8 +276,8 @@ runInstS NOP _ = return ()
 runInstS BRK _ = do
     p <- gets rP
     pc <- gets rPC
-    modify (flip pushByte (msb pc))
-    modify (flip pushByte (lsb pc))
+    modify (flip pushByte (msb (pc + 1)))
+    modify (flip pushByte (lsb (pc + 1)))
     modify (flip pushByte (destructP p))
 
     newc <- get
@@ -462,7 +292,6 @@ runInstS ORA mode = bitwiseS (.|.) mode
 runInstS EOR mode = bitwiseS (.^.) mode
 
 runInstS BIT mode = do
-    c <- get
     (val,newc) <- gets (case mode of
                     ZP  -> zeroPageReadInc None
                     Abs -> absReadInc None
