@@ -234,6 +234,7 @@ data Inst = ADC | AND | ASL | BCC | BCS | BEQ | BIT | BMI | BNE | BPL | BRK | BV
           | JSR | LDA | LDX | LDY | LSR | NOP | ORA | PHA | PHP | PLA | PLP | ROL | ROR | RTI
           | RTS | SBC | SEC | SED | SEI | STA | STX | STY | TAX | TAY | TSX | TXA | TXS | TYA
           | ILL -- Illegal instruction, one of the undefined opcodes
+          | STP -- Intentional stop instruction
           deriving (Show,Eq)
 
 -- | CPU Addressing Modes
@@ -446,6 +447,8 @@ runInstS TXA _ = gets rP >>= \p -> gets rX  >>= \x -> modify $ \c -> c {rA  = x,
 runInstS TXS _ = gets rP >>= \p -> gets rX  >>= \x -> modify $ \c -> c {rSP = x, rP = p {fZ = x == 0, fN = x `testBit` 7}}
 runInstS TYA _ = gets rP >>= \p -> gets rY  >>= \y -> modify $ \c -> c {rA  = y, rP = p {fZ = y == 0, fN = y `testBit` 7}}
 
+runInstS STP _ = throwError ""  -- not actually an error...
+
 runInstS _ _ = throwError "Cannot run illegal instruction!!!!!"
 
 
@@ -628,11 +631,13 @@ opToInst op | op `elem` [0x69, 0x65, 0x75, 0x6d, 0x7d, 0x79, 0x61, 0x71] = ADC
             | op `elem` [0x85, 0x95, 0x8d, 0x9d, 0x99, 0x81, 0x91]       = STA
             | op `elem` [0x86, 0x96, 0x8e]                               = STX
             | op `elem` [0x84, 0x94, 0x8c]                               = STY
+            | op `elem` [0x02, 0x12, 0x22, 0x32, 0x42, 0x62, 0x92, 0xb2, 0xd2, 0xf2] = STP
 opToInst _ = ILL
 
 -- | Get the addressing mode corresponding to the given opcode.
 opToAddrMode :: Opcode -> AddrMode
 opToAddrMode 0x00 = Imp
+opToAddrMode 0x02 = Imp
 opToAddrMode 0x10 = Rel
 opToAddrMode 0x20 = Abs
 opToAddrMode 0x30 = Rel
@@ -669,7 +674,9 @@ opToAddrMode op | (op .&. 0b11111) == 0b00000 = Imm
                 | (op .&. 0b11111) == 0b11001 = AbsY
                 | (op .&. 0b11111) == 0b11101 = AbsX
 
-                | (op .&. 0b11111) == 0b00010 = Imm
+                | (op .&. 0b1001_1111) == 0b1000_0010 = Imm
+                | (op .&. 0b11111) == 0b00010 = Imp
+
                 | (op .&. 0b11111) == 0b00110 = ZP
                 | (op .&. 0b11111) == 0b01010 = Acc
                 | (op .&. 0b11111) == 0b01110 = Abs

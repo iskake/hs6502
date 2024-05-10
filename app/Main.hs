@@ -41,8 +41,11 @@ runDebugger cpu = do
 
       case result of
           Left a -> do
-            B.putStr ("A FATAL ERROR OCCURRED:\n  " <> a <> "\n")
-            putStrLn "\nDEBUG: continuing execution at last valid CPU state..."
+            if B.null a
+              then putStrLn "Program execution finished." >> putStrLn "Debugger is still running!"
+              else do
+                B.putStr ("A FATAL ERROR OCCURRED:\n  " <> a <> "\n")
+                putStrLn "\nDEBUG: continuing execution at last valid CPU state..."
             putStrLn (printCPUState cpustate)
             putStrLn (printNextInstr cpustate)
             runDebugger cpu
@@ -130,11 +133,14 @@ keepRunningCPUState cpu = do
   (result,_) <- r
   case result of
       Left a -> do
-        B.putStr ("A FATAL ERROR OCCURRED:\n  " <> a <> "\n")
-        putStrLn "\nDEBUG: continuing execution at last valid CPU state..."
-        putStrLn (printCPUState cpustate)
-        putStrLn (printNextInstr cpustate)
-        runDebugger cpu
+        if B.null a
+          then putStrLn "Program finished executing successfully." >> exitSuccess
+          else do
+            B.putStr ("A FATAL ERROR OCCURRED:\n  " <> a <> "\n")
+            putStrLn "\nDEBUG: continuing execution at last valid CPU state..."
+            putStrLn (printCPUState cpustate)
+            putStrLn (printNextInstr cpustate)
+            runDebugger cpu
       Right () -> keepRunningCPUState r
 
 printHelp :: IO ()
@@ -147,5 +153,5 @@ printHelp = do
   putStrLn "  d  - Disassemble the memory at the specified memory address, or (if given no argument,) at the program counter."
   putStrLn "  w  - Write the specified byte to the specified memory address."
   putStrLn "  p  - Print the current CPU state, including register values and the next instruction to be run."
-  putStrLn "  pi - Show a list of all instructions and their coressponding opcode."
+  putStrLn "  pi - Show a list of all valid instructions and their coressponding opcode."
   putStrLn "  h  - show this help text."

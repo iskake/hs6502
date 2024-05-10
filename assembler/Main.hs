@@ -149,6 +149,7 @@ pInst = choice
     , TXA <$ string' "TXA"
     , TXS <$ string' "TXS"
     , TYA <$ string' "TYA"
+    , STP <$ string' "STP"
     , ILL <$ string' "ILL" ]
 
 pLabel :: Parser Label
@@ -253,6 +254,7 @@ labelReplace (i,am,a) m = Instruction i am (labeler a m)
 assemble :: Instruction -> Either Text [Word8]
 assemble (Instruction BRK Imp  Nothing)             = Right $ [0x00]
 assemble (Instruction ORA IndX (Just (Left val)))   = Right $ [0x01, val]
+assemble (Instruction STP Imp  Nothing)             = Right $ [0x02]
 assemble (Instruction ORA ZP   (Just (Left val)))   = Right $ [0x05, val]
 assemble (Instruction ASL ZP   (Just (Left val)))   = Right $ [0x06, val]
 assemble (Instruction PHP Imp  Nothing)             = Right $ [0x08]
