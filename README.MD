@@ -24,6 +24,10 @@ To run the emulator use `cabal build` to build each part, or simply use `cabal r
 
 todo todo todo....
 
-## Useful sources
+## Useful and helpful sources
 
 - The [Nesdev Wiki](https://www.nesdev.org/wiki/Nesdev_Wiki), especially the [CPU section](https://www.nesdev.org/wiki/CPU) and [obelisk 6502 reference](https://www.nesdev.org/obelisk-6502-guide/)
+- Including external links found on the wiki or otherwise:
+    - [6502 opcode matrix](https://www.oxyron.de/html/opcodes02.html)
+    - [6502 instruction set decoding from opcodes](https://llx.com/Neil/a2/opcodes.html#ins02)
+- The [Mesen](https://www.github.com/SourMesen/Mesen2) emulator, especially it's assembler and extensive debugger
