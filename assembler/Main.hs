@@ -34,7 +34,8 @@ type Argument = Maybe (Either Word8 (Either Word16 Label))
 type SourceInstruction = (Inst, AddrMode, Argument)
 type Label = Text
 type Bytes = [Word8]
--- data Region = Regi Word16 Int
+data Region = Regi Word16 Int
+    deriving (Show)
 
 data SourceLine = Ins SourceInstruction
                 | Lab Label
@@ -217,17 +218,32 @@ sc = L.space space1 (L.skipLineComment ";") empty
 --                              Assembling                                  --
 --                                                                          --
 ------------------------------------------------------------------------------
+romStartAddress :: Num a => a
+romStartAddress = 0x8000
 
--- getRegions :: [SourceLine] -> Word16 -> Word16 -> [Region]
--- getRegions [] _ _ = []
--- getRegions ((Ins (_, a, _)):xs) last len = (1 + addrModeArgCount a)
+romFillValue :: Num a => a
+romFillValue = 0
 
-getLabels :: [SourceLine] -> Map.Map Label Word16 -> Word16 -> Map.Map Label Word16
-getLabels [] m _ = m
-getLabels ((Ins (_, a, _)):xs)  m i = getLabels xs m (i + 1 + (addrModeArgCount a))
-getLabels ((Bytes bs):xs) m i = getLabels xs m (i + w16 (length bs))
-getLabels ((Lab l):xs)    m i = getLabels xs (Map.insert l i m) i
-getLabels ((Region _):xs) m i = getLabels xs m i
+-- TODO: Check if size overflows
+getRegions :: [SourceLine] -> Word16 -> Word16 -> Map.Map Word16 Region
+getRegions ls a b = let (_, m) = getRegions' ls Map.empty a b in m
+
+getRegions' :: [SourceLine] -> Map.Map Word16 Region -> Word16 -> Word16 -> ([SourceLine], Map.Map Word16 Region)
+getRegions' [] m _ _ = ([],m)
+getRegions' ((Ins (_, a, _)):xs) m prevRegi len = getRegions' xs m prevRegi (len + 1 + addrModeArgCount a)
+getRegions' ((Lab    _):xs)      m prevRegi len = getRegions' xs m prevRegi len
+getRegions' ((Bytes bs):xs)      m prevRegi len = getRegions' xs m prevRegi (fromIntegral len + fromIntegral (length bs))
+getRegions' ((Region ra):xs)     m prevRegi len = getRegions' xs (Map.insert ra r m) ra 0
+    where 
+        r = Regi ra (fromIntegral (ra - (prevRegi + len)))
+
+-- TODO: Check if two of the same labels exists?
+getLabels :: [SourceLine] -> Map.Map Label Word16 -> Word16 -> Map.Map Word16 Region -> Map.Map Label Word16
+getLabels [] m _ _ = m
+getLabels ((Ins (_, a, _)):xs) m i r = getLabels xs m (i + 1 + (addrModeArgCount a)) r
+getLabels ((Bytes bs):xs) m i r = getLabels xs m (i + w16 (length bs)) r
+getLabels ((Lab l):xs)    m i r = getLabels xs (Map.insert l i m) i r
+getLabels ((Region _):xs) m i r = getLabels xs m i r
 
 labeler :: Argument -> Map Label Word16 -> Maybe (Either Word8 Word16)
 labeler (Just (Right (Right l))) m = Map.lookup l m >>= Just . Right
@@ -401,15 +417,16 @@ assemble ins@(Instruction i m a) = do
                 (Right w) -> "$" <> (T.pack (hex16 w)) <> " as"
     Left ("  Failed to assemble instruction " <> T.pack (show i) <> " with " <> T.pack (show m) <> " addressing mode and " <> ar <> " argument (`" <> T.pack (show ins) <> "`)")
 
-tryAssemble :: Map Label Word16 -> SourceLine -> Either Text [Word8]
-tryAssemble labels (Ins i) = assemble (labelReplace i labels)
-tryAssemble _ (Bytes bs)   = Right bs
-tryAssemble _ (Lab _)      = Right []
-tryAssemble _ (Region _)   = Right []
+tryAssemble :: Map Label Word16 -> Map Word16 Region -> SourceLine -> Either Text [Word8]
+tryAssemble labels _ (Ins i) = assemble (labelReplace i labels)
+tryAssemble _ _ (Bytes bs)   = Right bs
+tryAssemble _ _ (Lab _)      = Right []
+tryAssemble _ m (Region r)   = case Map.lookup r m of
+                                    Nothing -> Left $ "Failed to assemble: Region at " <> T.pack (hex16 r) <> " does not exist."
+                                    Just (Regi _ len) -> Right $ replicate (fromIntegral len) 0
 
-assembleFile :: FilePath -> IO ()
-assembleFile filename = do
-    file <- T.readFile (filename)
+assembleBinlist :: Text -> IO [[Word8]]
+assembleBinlist file = do
     let ls = (filter (\x -> (T.head x) /= ';') -- TODO: replace with (many . pLegal) so we don't lose line numbers in error messages?
             . map T.strip
             . filter (/= "")
@@ -419,15 +436,23 @@ assembleFile filename = do
     case mapM (runParser (sc >> pLegal) "") ls of
         Left failures -> mapM_ (putStrLn . errorBundlePretty) [failures] >> exitFailure
         Right l -> do
-            -- let regions = getRegions x -- TODO
-            let labels = getLabels l Map.empty 0x8000--regions x -- TODO
+            let regions = getRegions l romStartAddress 0 -- TODO
+            print regions
+            let labels = getLabels l Map.empty romStartAddress regions -- TODO
             -- print labels
-            let asm = map (tryAssemble labels) l
+            let asm = map (tryAssemble labels regions) l
             -- print asm
             mapM_ (either (\a -> T.putStrLn $ "Assembly error: " <> a) (\_ -> return ())) asm
             case sequence asm of
                 Left _ -> T.putStrLn "  Errors encountered while assembling!! stopping..." >> exitFailure
-                Right val -> B.writeFile (replaceExtension filename "bin") (B.pack (concat val)) >> putStrLn ("Successfully assembled " <> (replaceExtension filename "bin"))
+                Right val -> return val
+
+assembleFile :: FilePath -> IO ()
+assembleFile filename = do
+    file <- T.readFile filename
+    val <- assembleBinlist file
+    B.writeFile (replaceExtension filename "bin")
+                (B.pack (concat val)) >> putStrLn ("Successfully assembled " <> (replaceExtension filename "bin"))
 
 -- Main function
 main :: IO ()
