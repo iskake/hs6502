@@ -1,5 +1,11 @@
 # hs6502
 
+NOTE: This repo was originally made for learning more haskell, and is not particularly fast or usable. For a much better and faster implementation, see the version used in [this project](https://github.com/iskake/rfce)
+
+Original readme:
+
+---
+
 A 6502 CPU emulator written in haskell.
 
 The hs6502 repository is divided into three main parts:
@@ -44,3 +50,12 @@ todo... check out https://www.nesdev.org/obelisk-6502-guide/ and the `hi` comman
     - [6502 opcode matrix](https://www.oxyron.de/html/opcodes02.html)
     - [6502 instruction set decoding from opcodes](https://llx.com/Neil/a2/opcodes.html#ins02)
 - The [Mesen](https://www.github.com/SourMesen/Mesen2) emulator, especially it's assembler and extensive debugger
+
+
+
+THINGS ONE MUST HANDLE TODAY:
+- WRITE THE FUCKING RAPORT YOU STUPID IDIOT FUCK!!!!!! YOU WILL LITERALLYF FAIL IF YOU DON"T DO THIS THING!!!!!!!!
+    - they're probably not gonna be too thorough on this application anyway... (maybe, but i should have some example programs so it isn't literally useless, and maybe have brk do the thing if enough time? idk)
+    - also read the progress raport too, so i know wtf to write in the thing
+    - use the emotional support drmy if needed
+- Add TESTS!!!!!!!!!! VERY IMPORATNT PROBABLY!!!

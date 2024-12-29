@@ -76,14 +76,3 @@ executable assembler
     hs-source-dirs:   assembler
     -- Base language which the package is written in.
     default-language: Haskell2010
-
--- TODO
-test-suite hs6502-test
-    type:             exitcode-stdio-1.0
-    main-is:          LibTest.hs
-    build-depends:
-        base <5,
-        HUnit,
-        hs6502
-    hs-source-dirs:   test
-    default-language: Haskell2010
