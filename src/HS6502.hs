@@ -99,6 +99,7 @@ memCreate x len = U8Memory (V.fromList (Prelude.replicate 0x8000 0 ++ x ++ Prelu
 
 type CPU a b = (ExceptT B.ByteString (StateT (CPUState b) IO) a)
 
+runCPU :: CPU a b -> CPUState b -> IO (Either B.ByteString a, CPUState b)
 runCPU = runStateT . runExceptT
 
 
