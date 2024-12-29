@@ -309,10 +309,10 @@ runInst ROL Acc = modify $ \c -> let val = rA c .<<. 1 in c {rA = val .|. bToI (
 runInst LSR Acc = modify $ \c -> let val = rA c .>>. 1 in c {rA = val,                               rP = (rP c) {fC = rA c `testBit` 0, fZ = val == 0, fN = val `testBit` 7}}
 runInst ROR Acc = modify $ \c -> let val = rA c .>>. 1 in c {rA = val .|. (bToI (fC (rP c)) .<<. 7), rP = (rP c) {fC = rA c `testBit` 0, fZ = val == 0, fN = val `testBit` 7}}
 
-runInst ASL mode = modify $ \c -> let (val,newc) = memReadWrite (.<<. 1) mode c                                         in newc {rP = (rP newc) {fC = val `testBit` 7}}
-runInst ROL mode = modify $ \c -> let (val,newc) = memReadWrite (\x -> (x .<<. 1) .|. bToI (fC (rP c))) mode c          in newc {rP = (rP newc) {fC = val `testBit` 7}}
-runInst LSR mode = modify $ \c -> let (val,newc) = memReadWrite (.>>. 1) mode c                                         in newc {rP = (rP newc) {fC = val `testBit` 0}}
-runInst ROR mode = modify $ \c -> let (val,newc) = memReadWrite (\x -> (x .>>. 1) .|. (bToI (fC (rP c)) .<<. 7)) mode c in newc {rP = (rP newc) {fC = val `testBit` 0}}
+runInst ASL mode = modify $ \c -> let (val,newc) = memReadWrite (.<<. 1) mode c                                         in newc {rP = (rP newc) {fC = val `testBit` 7, fZ = val == 0, fN = val `testBit` 7}}
+runInst ROL mode = modify $ \c -> let (val,newc) = memReadWrite (\x -> (x .<<. 1) .|. bToI (fC (rP c))) mode c          in newc {rP = (rP newc) {fC = val `testBit` 7, fZ = val == 0, fN = val `testBit` 7}}
+runInst LSR mode = modify $ \c -> let (val,newc) = memReadWrite (.>>. 1) mode c                                         in newc {rP = (rP newc) {fC = val `testBit` 0, fZ = val == 0, fN = val `testBit` 7}}
+runInst ROR mode = modify $ \c -> let (val,newc) = memReadWrite (\x -> (x .>>. 1) .|. (bToI (fC (rP c)) .<<. 7)) mode c in newc {rP = (rP newc) {fC = val `testBit` 0, fZ = val == 0, fN = val `testBit` 7}}
 
 runInst CLC _ = modify $ \c -> c {rP = (rP c) {fC = False}}
 runInst CLD _ = modify $ \c -> c {rP = (rP c) {fD = False}}  -- Note: Binary Coded Decimal (BCD) is not implemented
@@ -419,16 +419,16 @@ runInst STA mode = gets rA >>= \a -> modify $ flip (case mode of
                         IndX -> indWriteInc X
                         IndY -> indWriteInc Y
                         _    -> error "Unreachable") a
-runInst STX mode = gets rA >>= \a -> modify $ flip (case mode of
+runInst STX mode = gets rX >>= \x -> modify $ flip (case mode of
                         ZP   -> zpWrite None
                         ZPY  -> zpWrite Y
                         Abs  -> absWriteInc None
-                        _    -> error "Unreachable") a
-runInst STY mode = gets rA >>= \a -> modify $ flip (case mode of
+                        _    -> error "Unreachable") x
+runInst STY mode = gets rY >>= \y -> modify $ flip (case mode of
                         ZP   -> zpWrite None
                         ZPX  -> zpWrite X
                         Abs  -> absWriteInc None
-                        _    -> error "Unreachable") a
+                        _    -> error "Unreachable") y
 
 runInst PHA _ = gets rA >>= \a -> modify $ \c -> pushByte c a
 runInst PHP _ = gets rP >>= \p -> modify $ \c -> pushByte c (destructP p)

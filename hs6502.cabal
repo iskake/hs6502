@@ -3,7 +3,7 @@ name:               hs6502
 version:            0.1.0.1
 license:            GPL-3.0-or-later
 license-file:       LICENSE
-author:             Tarjei Landøy
+author:             iskake
 maintainer:         iskake@protonmail.com
 category:           Development
 build-type:         Simple
@@ -47,7 +47,8 @@ executable hs6502
         base <5,
         hs6502,
         bytestring,
-        mtl
+        mtl,
+        time
     -- Directories containing source files.
     hs-source-dirs:   app
     -- Base language which the package is written in.
@@ -74,4 +75,15 @@ executable assembler
     -- Directories containing source files.
     hs-source-dirs:   assembler
     -- Base language which the package is written in.
+    default-language: Haskell2010
+
+-- TODO
+test-suite hs6502-test
+    type:             exitcode-stdio-1.0
+    main-is:          LibTest.hs
+    build-depends:
+        base <5,
+        HUnit,
+        hs6502
+    hs-source-dirs:   test
     default-language: Haskell2010
